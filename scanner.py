@@ -8,6 +8,7 @@ CHECKS = [
     ("ai_crawler_access",    "AI Crawler Access",                      20),
     ("llms_txt",             "llms.txt File",                          15),
     ("structured_data",      "Structured Data (JSON-LD / Schema.org)", 20),
+    ("js_rendering",         "JavaScript Rendering (SSR Check)",       15),
     ("pricing_parsability",  "Pricing Parsability",                    15),
     ("contact_parsability",  "Contact Info Parsability",               10),
     ("api_discoverability",  "API Discoverability",                    10),
@@ -18,11 +19,24 @@ EFFORT = {
     "ai_crawler_access":   ("Easy",   "15 min"),
     "llms_txt":            ("Easy",   "1 hour"),
     "structured_data":     ("Medium", "2–4 hours"),
+    "js_rendering":        ("Hard",   "developer needed"),
     "pricing_parsability": ("Medium", "2–4 hours"),
     "contact_parsability": ("Easy",   "30 min"),
     "api_discoverability": ("Hard",   "developer needed"),
     "sitemap":             ("Easy",   "30 min"),
 }
+
+# Schema types that AI answer engines strongly weight for citations and extraction
+HIGH_VALUE_SCHEMA_TYPES = {
+    "FAQPage", "Product", "Service", "SoftwareApplication",
+    "ContactPoint", "PriceSpecification", "ItemList", "Article",
+    "BlogPosting", "Event", "Person", "Review", "AggregateRating",
+    "HowTo", "QAPage",
+}
+GENERIC_SCHEMA_TYPES = {"Organization", "WebSite", "WebPage", "BreadcrumbList"}
+
+# SPA root element IDs that indicate client-side rendering
+CSR_ROOT_IDS = ["root", "app", "__next", "gatsby-focus-wrapper", "nuxt", "__nuxt"]
 
 AI_BOTS = ["GPTBot", "ClaudeBot", "anthropic-ai", "PerplexityBot", "ChatGPT-User"]
 
@@ -82,31 +96,68 @@ def _check_ai_crawler_access(base_url: str, session: requests.Session) -> dict:
 def _check_llms_txt(base_url: str, session: requests.Session) -> dict:
     try:
         r = session.get(urljoin(base_url, "/llms.txt"), timeout=6)
-        if r.status_code == 200 and len(r.text.strip()) > 80:
+        if r.status_code != 200:
             return {
-                "pass": True,
-                "detail": "llms.txt found and populated — AI agents have structured context about your business.",
-                "action": "No action needed.",
-            }
-        elif r.status_code == 200:
-            return {
-                "pass": None,
-                "detail": "llms.txt exists but is nearly empty.",
+                "pass": False,
+                "detail": "No llms.txt found. This file gives AI agents structured context about your business without scraping.",
                 "action": (
-                    "Expand /llms.txt to include: a 2–3 sentence business description, "
-                    "what you sell, your ideal customer profile, pricing model summary, "
-                    "and a contact email. Reference: llmstxt.org for the spec."
+                    "Create a plain-text Markdown file at /llms.txt. Structure it with: "
+                    "an H1 title (`# Company Name`), a blockquote summary (`> What you sell in 1–2 sentences`), "
+                    "and links to your key pages. Reference: llmstxt.org."
                 ),
             }
-        return {
-            "pass": False,
-            "detail": "No llms.txt found. This file gives AI agents structured context about your business without scraping.",
-            "action": (
-                "Create a plain-text file at /llms.txt (your domain root). Include: "
-                "what you sell, your ideal customer, pricing model, and a contact email. "
-                "Takes under an hour. Reference: llmstxt.org."
-            ),
-        }
+
+        content = r.text.strip()
+        if not content:
+            return {
+                "pass": False,
+                "detail": "llms.txt exists but is empty.",
+                "action": (
+                    "Populate /llms.txt with: an H1 title, a blockquote business summary, "
+                    "and links to key pages (pricing, docs, contact). Reference: llmstxt.org."
+                ),
+            }
+
+        lines = content.splitlines()
+        has_h1 = any(line.startswith("# ") for line in lines)
+        has_blockquote = any(line.startswith("> ") for line in lines)
+        has_link = bool(re.search(r'\[.+?\]\(https?://', content))
+
+        structure_signals = [has_h1, has_blockquote, has_link]
+        structure_count = sum(structure_signals)
+
+        if structure_count >= 2:
+            found = []
+            if has_h1: found.append("H1 title")
+            if has_blockquote: found.append("blockquote summary")
+            if has_link: found.append("linked pages")
+            return {
+                "pass": True,
+                "detail": f"llms.txt is well-structured ({', '.join(found)}) — AI agents have reliable, parseable context about your business.",
+                "action": "No action needed.",
+            }
+        elif len(content) > 80:
+            missing = []
+            if not has_h1: missing.append("H1 title (`# Company Name`)")
+            if not has_blockquote: missing.append("blockquote summary (`> What you sell`)")
+            if not has_link: missing.append("links to key pages")
+            return {
+                "pass": None,
+                "detail": f"llms.txt exists but lacks proper structure — AI models may misparse it.",
+                "action": (
+                    f"Add the missing elements: {'; '.join(missing)}. "
+                    "A structured llms.txt becomes the AI's canonical mental model of your business."
+                ),
+            }
+        else:
+            return {
+                "pass": None,
+                "detail": "llms.txt exists but is too sparse (under 80 characters) to give AI agents useful context.",
+                "action": (
+                    "Expand /llms.txt with: an H1 title, a blockquote business summary (1–3 sentences), "
+                    "and links to your pricing, docs, and contact pages. Reference: llmstxt.org."
+                ),
+            }
     except Exception as e:
         return {
             "pass": False,
@@ -121,42 +172,125 @@ def _check_structured_data(soup: BeautifulSoup) -> dict:
     for script in scripts:
         try:
             data = json.loads(script.string or "")
-            t = data.get("@type", "")
-            if isinstance(t, list):
-                found_types.extend(t)
-            elif t:
-                found_types.append(t)
+            # Handle @graph arrays (common in WordPress/Yoast)
+            if "@graph" in data:
+                for node in data["@graph"]:
+                    t = node.get("@type", "")
+                    if isinstance(t, list):
+                        found_types.extend(t)
+                    elif t:
+                        found_types.append(t)
+            else:
+                t = data.get("@type", "")
+                if isinstance(t, list):
+                    found_types.extend(t)
+                elif t:
+                    found_types.append(t)
         except Exception:
             pass
 
     has_og = bool(soup.find("meta", property="og:title") or soup.find("meta", attrs={"property": "og:title"}))
 
-    if found_types:
+    if not found_types:
+        if has_og:
+            return {
+                "pass": None,
+                "detail": "Open Graph tags present but no JSON-LD structured data.",
+                "action": (
+                    "Add a `<script type='application/ld+json'>` block in your homepage `<head>`. "
+                    "Prioritise high-citation types: FAQPage, Product, or SoftwareApplication — "
+                    "pages with FAQPage schema receive 2.7× more AI citations than those without. "
+                    "Reference: schema.org."
+                ),
+            }
         return {
-            "pass": True,
-            "detail": f"JSON-LD found — types: {', '.join(found_types)}. {'Open Graph also present.' if has_og else ''}",
-            "action": "No action needed.",
-        }
-    elif has_og:
-        return {
-            "pass": None,
-            "detail": "Open Graph tags present but no JSON-LD structured data.",
+            "pass": False,
+            "detail": "No structured data found. AI agents cannot reliably extract your business type, offerings, or contact info.",
             "action": (
                 "Add a `<script type='application/ld+json'>` block in your homepage `<head>`. "
-                "Minimum viable: `{\"@context\": \"https://schema.org\", \"@type\": \"Organization\", "
-                "\"name\": \"...\", \"url\": \"...\", \"description\": \"...\"}`. "
-                "Reference: schema.org/Organization."
+                "Start with Organization, then add FAQPage or Product for high-value AI citation types. "
+                "Reference: schema.org."
+            ),
+        }
+
+    high_value = [t for t in found_types if t in HIGH_VALUE_SCHEMA_TYPES]
+    generic = [t for t in found_types if t in GENERIC_SCHEMA_TYPES]
+
+    if high_value:
+        return {
+            "pass": True,
+            "detail": (
+                f"High-value JSON-LD types found: {', '.join(high_value)}."
+                + (f" Also generic types: {', '.join(generic)}." if generic else "")
+                + (" Open Graph also present." if has_og else "")
+                + " AI agents can extract structured business intent from this page."
+            ),
+            "action": "No action needed.",
+        }
+    else:
+        # Only generic types present — partial credit
+        return {
+            "pass": None,
+            "detail": (
+                f"JSON-LD found but only generic types: {', '.join(generic or found_types)}. "
+                "These help AI agents identify your site but don't signal products, pricing, or FAQs."
+            ),
+            "action": (
+                "Add high-citation schema types: FAQPage (2.7× more AI citations), "
+                "Product or SoftwareApplication (for B2B offering clarity), "
+                "or ContactPoint (for inquiry routing). "
+                "Keep your existing Organization schema and layer these on top."
+            ),
+        }
+
+
+def _check_js_rendering(soup: BeautifulSoup) -> dict:
+    body = soup.body
+    text = (body or soup).get_text(separator=" ", strip=True)
+    text_len = len(text)
+    script_count = len(soup.find_all("script"))
+
+    # Check for known SPA root elements
+    csr_root = next(
+        (soup.find("div", {"id": rid}) for rid in CSR_ROOT_IDS if soup.find("div", {"id": rid})),
+        None,
+    )
+
+    if text_len < 200 and script_count > 0:
+        return {
+            "pass": False,
+            "detail": (
+                f"Only {text_len} characters of static text found alongside {script_count} script tags. "
+                "This page is almost certainly client-side rendered — AI crawlers (GPTBot, ClaudeBot, "
+                "PerplexityBot) do not execute JavaScript and will see empty content."
+            ),
+            "action": (
+                "Implement server-side rendering (SSR) using Next.js, Nuxt, or Angular Universal, "
+                "or use static site generation (SSG). Ensure pricing, product descriptions, and contact "
+                "info appear in the raw HTML source. Test by viewing page source: if content isn't "
+                "there, AI agents can't see it."
+            ),
+        }
+    elif csr_root is not None and text_len < 600:
+        return {
+            "pass": None,
+            "detail": (
+                f"SPA root element detected (`id='{csr_root.get('id')}'`) with only {text_len} chars of "
+                "static text. Some key content may be invisible to AI crawlers that don't execute JavaScript."
+            ),
+            "action": (
+                "Verify that pricing, product descriptions, and contact info appear in the raw HTML "
+                "page source (Ctrl+U in browser). Any content missing from page source is invisible to "
+                "GPTBot, ClaudeBot, and PerplexityBot. Use SSR or pre-rendering for critical pages."
             ),
         }
     return {
-        "pass": False,
-        "detail": "No structured data found. AI agents cannot reliably extract your business type, offerings, or contact info.",
-        "action": (
-            "Add a `<script type='application/ld+json'>` block in your homepage `<head>`. "
-            "Minimum viable: `{\"@context\": \"https://schema.org\", \"@type\": \"Organization\", "
-            "\"name\": \"...\", \"url\": \"...\", \"description\": \"...\"}`. "
-            "Reference: schema.org/Organization."
+        "pass": True,
+        "detail": (
+            f"Page contains {text_len} characters of static text — AI crawlers can read your "
+            "content without JavaScript execution."
         ),
+        "action": "No action needed.",
     }
 
 
@@ -310,6 +444,7 @@ def scan(url: str) -> dict:
         "ai_crawler_access":   lambda: _check_ai_crawler_access(base_url, session),
         "llms_txt":            lambda: _check_llms_txt(base_url, session),
         "structured_data":     lambda: _check_structured_data(soup),
+        "js_rendering":        lambda: _check_js_rendering(soup),
         "pricing_parsability": lambda: _check_pricing_parsability(soup),
         "contact_parsability": lambda: _check_contact_parsability(soup),
         "api_discoverability": lambda: _check_api_discoverability(base_url, session),
@@ -317,7 +452,8 @@ def scan(url: str) -> dict:
     }
 
     results = []
-    total = 0
+    raw_total = 0
+    max_total = sum(max_pts for _, _, max_pts in CHECKS)
 
     for key, label, max_pts in CHECKS:
         outcome = check_fns[key]()
@@ -328,7 +464,7 @@ def scan(url: str) -> dict:
         else:
             earned, status = 0, "fail"
 
-        total += earned
+        raw_total += earned
         effort_level, effort_time = EFFORT[key]
         results.append({
             "check":         label,
@@ -343,12 +479,15 @@ def scan(url: str) -> dict:
             "effort_time":   effort_time,
         })
 
+    # Normalise to 0–100 so the gauge always reads out of 100
+    score = round(raw_total * 100 / max_total)
+
     fails_and_warnings = [c for c in results if c["status"] in ("fail", "warning")]
     fails_and_warnings.sort(key=lambda c: c["points_lost"], reverse=True)
 
     return {
         "url":             url,
-        "score":           total,
+        "score":           score,
         "checks":          results,
         "recommendations": fails_and_warnings,
     }

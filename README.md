@@ -53,17 +53,20 @@ Then enter any URL in the browser UI.
 
 ---
 
-## The 7 Checks
+## The 8 Checks
 
 | Check | Points | What it tests |
 |-------|--------|---------------|
 | AI Crawler Access | 20 | robots.txt not blocking GPTBot, ClaudeBot, PerplexityBot |
-| llms.txt | 15 | /llms.txt file with business context for AI agents |
-| Structured Data | 20 | JSON-LD / Schema.org markup (Product, Organization, ContactPoint) |
+| llms.txt | 15 | /llms.txt with proper structure: H1 title, blockquote summary, linked pages |
+| Structured Data | 20 | JSON-LD types graded by quality — FAQPage/Product/SoftwareApplication score higher than generic Organization |
+| JavaScript Rendering | 15 | Key content present in static HTML — AI crawlers don't execute JavaScript |
 | Pricing Parsability | 15 | Prices visible in static HTML, not just JavaScript |
 | Contact Parsability | 10 | Email/phone findable without JavaScript execution |
 | API Discoverability | 10 | /openapi.json or /.well-known/ai-plugin.json present |
 | Sitemap.xml | 10 | Valid sitemap for systematic content discovery |
+
+Score is normalised to 0–100 across all checks.
 
 ---
 
