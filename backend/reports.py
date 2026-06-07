@@ -74,7 +74,7 @@ def generate_pdf(result: dict) -> bytes:
     pdf.cell(W, 12, "agentready Report", ln=True, align="C")
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(120, 120, 120)
-    pdf.cell(W, 6, "AI Agent Readiness Scanner", ln=True, align="C")
+    pdf.cell(W, 6, "Machine-Readable Website Scanner", ln=True, align="C")
     pdf.ln(4)
 
     pdf.set_text_color(0, 0, 0)

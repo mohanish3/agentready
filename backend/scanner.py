@@ -19,6 +19,93 @@ CHECKS = [
     ("mcp_discoverability",  "MCP Agent Endpoint",                     10),
 ]
 
+RESEARCH_SOURCES = {
+    "ai_crawler_access": {
+        "title": "OpenAI, Anthropic, and Perplexity crawler controls",
+        "url": "https://developers.openai.com/api/docs/bots",
+        "rationale": "Crawler user agents and robots.txt controls determine whether agent search and retrieval systems can access public pages.",
+        "last_reviewed": "2026-06-08",
+    },
+    "llms_txt": {
+        "title": "The /llms.txt file",
+        "url": "https://llmstxt.org/",
+        "rationale": "The proposal defines a root Markdown file with project/site summary and curated links for LLM inference-time use.",
+        "last_reviewed": "2026-06-08",
+    },
+    "structured_data": {
+        "title": "Intro to structured data markup",
+        "url": "https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data",
+        "rationale": "JSON-LD and schema.org vocabulary make page entities, products, offers, and contacts machine-readable.",
+        "last_reviewed": "2026-06-08",
+    },
+    "js_rendering": {
+        "title": "Overview of OpenAI Crawlers",
+        "url": "https://developers.openai.com/api/docs/bots",
+        "rationale": "Crawler and search bots fetch public web content; critical content should be present in HTML responses, not only after client JavaScript.",
+        "last_reviewed": "2026-06-08",
+    },
+    "pricing_parsability": {
+        "title": "Schema.org Offer",
+        "url": "https://schema.org/Offer",
+        "rationale": "Offer and price properties provide structured commercial terms that parsers can extract reliably.",
+        "last_reviewed": "2026-06-08",
+    },
+    "contact_parsability": {
+        "title": "Schema.org ContactPoint",
+        "url": "https://schema.org/ContactPoint",
+        "rationale": "ContactPoint and visible contact data help automated systems route sales or support inquiries.",
+        "last_reviewed": "2026-06-08",
+    },
+    "api_discoverability": {
+        "title": "OpenAPI Specification",
+        "url": "https://spec.openapis.org/oas/latest.html",
+        "rationale": "Published API descriptions let tools and agents discover callable operations and request/response shapes.",
+        "last_reviewed": "2026-06-08",
+    },
+    "sitemap": {
+        "title": "Robots Exclusion Protocol RFC 9309",
+        "url": "https://www.ietf.org/rfc/rfc9309.html",
+        "rationale": "robots.txt and sitemap discovery help crawlers understand allowed access and available URL inventory.",
+        "last_reviewed": "2026-06-08",
+    },
+    "cookie_consent_wall": {
+        "title": "Robots Exclusion Protocol RFC 9309",
+        "url": "https://www.ietf.org/rfc/rfc9309.html",
+        "rationale": "Crawlers request resources programmatically; consent overlays must not hide key public content from raw HTML access.",
+        "last_reviewed": "2026-06-08",
+    },
+    "content_freshness": {
+        "title": "HTTP Semantics",
+        "url": "https://www.rfc-editor.org/rfc/rfc9110.html",
+        "rationale": "HTTP validators such as ETag and Last-Modified help clients detect changed content efficiently.",
+        "last_reviewed": "2026-06-08",
+    },
+    "auth_wall": {
+        "title": "Overview of OpenAI Crawlers",
+        "url": "https://developers.openai.com/api/docs/bots",
+        "rationale": "Public crawler access depends on content being reachable without login redirects or authentication walls.",
+        "last_reviewed": "2026-06-08",
+    },
+    "mcp_discoverability": {
+        "title": "Model Context Protocol specification",
+        "url": "https://modelcontextprotocol.io/specification/2024-11-05/basic",
+        "rationale": "MCP defines resources, prompts, and tools exposed by servers for model-context integrations.",
+        "last_reviewed": "2026-06-08",
+    },
+}
+
+WORKFLOW_STEPS = [
+    "normalize_url",
+    "fetch_homepage",
+    "fetch_discovery_files",
+    "run_checks",
+    "fetch_subpages",
+    "score",
+    "generate_fixes",
+    "persist",
+    "stream_events",
+]
+
 EFFORT = {
     "ai_crawler_access":   ("Easy",   "15 min"),
     "llms_txt":            ("Easy",   "1 hour"),
@@ -33,6 +120,40 @@ EFFORT = {
     "auth_wall":           ("Medium", "varies"),
     "mcp_discoverability": ("Hard",   "developer needed"),
 }
+
+
+def _with_research(key: str, result: dict) -> dict:
+    result["research_source"] = RESEARCH_SOURCES[key]
+    result["confidence"] = "high"
+    return result
+
+
+def _derive_next_step(result: dict) -> dict:
+    recs = result.get("recommendations") or []
+    if not recs:
+        return {
+            "key": "complete",
+            "label": "No fixes left",
+            "action": "No action needed.",
+            "points_gain": 0,
+            "workflow": WORKFLOW_STEPS,
+            "confidence": "high",
+        }
+
+    top = max(recs, key=lambda r: r.get("points_lost", 0))
+    source = top.get("research_source") or RESEARCH_SOURCES.get(top["key"])
+    return {
+        "key": top["key"],
+        "label": top.get("check", top["key"]),
+        "action": top.get("action", ""),
+        "points_gain": top.get("points_lost", 0),
+        "effort_level": top.get("effort_level"),
+        "effort_time": top.get("effort_time"),
+        "detail": top.get("detail", ""),
+        "research_source": source,
+        "confidence": top.get("confidence", "high"),
+        "workflow": WORKFLOW_STEPS,
+    }
 
 HIGH_VALUE_SCHEMA_TYPES = {
     "FAQPage", "Product", "Service", "SoftwareApplication",
@@ -77,7 +198,7 @@ def _check_ai_crawler_access(base_url: str, session: requests.Session) -> dict:
         if r.status_code != 200:
             return {
                 "pass": True,
-                "detail": "No robots.txt — AI crawlers have unrestricted access.",
+                "detail": "No robots.txt - crawler user agents have unrestricted access.",
                 "action": "No action needed.",
             }
 
@@ -112,7 +233,7 @@ def _check_ai_crawler_access(base_url: str, session: requests.Session) -> dict:
             }
         return {
             "pass": True,
-            "detail": f"No AI crawlers blocked. Checked: {', '.join(AI_BOTS)}.",
+            "detail": f"No crawler user agents blocked. Checked: {', '.join(AI_BOTS)}.",
             "action": "No action needed.",
         }
     except Exception as e:
@@ -129,7 +250,7 @@ def _check_llms_txt(base_url: str, session: requests.Session) -> dict:
         if r.status_code != 200:
             return {
                 "pass": False,
-                "detail": "No llms.txt found. This file gives AI agents structured context about your business without scraping.",
+                "detail": "No llms.txt found. This file gives automated tools structured context about your business without scraping.",
                 "action": (
                     "Create a plain-text Markdown file at /llms.txt. Structure it with: "
                     "an H1 title (`# Company Name`), a blockquote summary (`> What you sell in 1-2 sentences`), "
@@ -162,7 +283,7 @@ def _check_llms_txt(base_url: str, session: requests.Session) -> dict:
             if has_link:       found.append("linked pages")
             return {
                 "pass": True,
-                "detail": f"llms.txt is well-structured ({', '.join(found)}) -- AI agents have reliable, parseable context about your business.",
+                "detail": f"llms.txt is well-structured ({', '.join(found)}) -- automated tools have reliable, parseable context about your business.",
                 "action": "No action needed.",
             }
         elif len(content) > 80:
@@ -181,7 +302,7 @@ def _check_llms_txt(base_url: str, session: requests.Session) -> dict:
         else:
             return {
                 "pass": None,
-                "detail": "llms.txt exists but is too sparse (under 80 characters) to give AI agents useful context.",
+                "detail": "llms.txt exists but is too sparse (under 80 characters) to give automated tools useful context.",
                 "action": (
                     "Expand /llms.txt with: an H1 title, a blockquote business summary (1-3 sentences), "
                     "and links to your pricing, docs, and contact pages. Reference: llmstxt.org."
@@ -233,7 +354,7 @@ def _check_structured_data(soup: BeautifulSoup) -> dict:
             }
         return {
             "pass": False,
-            "detail": "No structured data found. AI agents cannot reliably extract your business type, offerings, or contact info.",
+            "detail": "No structured data found. automated tools cannot reliably extract your business type, offerings, or contact info.",
             "action": (
                 "Add a `<script type='application/ld+json'>` block in your homepage `<head>`. "
                 "Start with Organization, then add FAQPage or Product for high-value AI citation types. "
@@ -251,7 +372,7 @@ def _check_structured_data(soup: BeautifulSoup) -> dict:
                 f"High-value JSON-LD types found: {', '.join(high_value)}."
                 + (f" Also generic types: {', '.join(generic)}." if generic else "")
                 + (" Open Graph also present." if has_og else "")
-                + " AI agents can extract structured business intent from this page."
+                + " automated tools can extract structured business intent from this page."
             ),
             "action": "No action needed.",
         }
@@ -260,7 +381,7 @@ def _check_structured_data(soup: BeautifulSoup) -> dict:
             "pass": None,
             "detail": (
                 f"JSON-LD found but only generic types: {', '.join(generic or found_types)}. "
-                "These help AI agents identify your site but don't signal products, pricing, or FAQs."
+                "These help automated tools identify your site but don't signal products, pricing, or FAQs."
             ),
             "action": (
                 "Add high-citation schema types: FAQPage (2.7x more AI citations), "
@@ -287,14 +408,14 @@ def _check_js_rendering(soup: BeautifulSoup) -> dict:
             "pass": False,
             "detail": (
                 f"Only {text_len} characters of static text found alongside {script_count} script tags. "
-                "This page is almost certainly client-side rendered -- AI crawlers (GPTBot, ClaudeBot, "
+                "This page is almost certainly client-side rendered -- crawler user agents (GPTBot, ClaudeBot, "
                 "PerplexityBot) do not execute JavaScript and will see empty content."
             ),
             "action": (
                 "Implement server-side rendering (SSR) using Next.js, Nuxt, or Angular Universal, "
                 "or use static site generation (SSG). Ensure pricing, product descriptions, and contact "
                 "info appear in the raw HTML source. Test by viewing page source: if content isn't "
-                "there, AI agents can't see it."
+                "there, automated tools can't see it."
             ),
         }
     elif csr_root is not None and text_len < 600:
@@ -302,7 +423,7 @@ def _check_js_rendering(soup: BeautifulSoup) -> dict:
             "pass": None,
             "detail": (
                 f"SPA root element detected (`id='{csr_root.get('id')}'`) with only {text_len} chars of "
-                "static text. Some key content may be invisible to AI crawlers that don't execute JavaScript."
+                "static text. Some key content may be invisible to crawler user agents that don't execute JavaScript."
             ),
             "action": (
                 "Verify that pricing, product descriptions, and contact info appear in the raw HTML "
@@ -313,7 +434,7 @@ def _check_js_rendering(soup: BeautifulSoup) -> dict:
     return {
         "pass": True,
         "detail": (
-            f"Page contains {text_len} characters of static text -- AI crawlers can read your "
+            f"Page contains {text_len} characters of static text -- crawler user agents can read your "
             "content without JavaScript execution."
         ),
         "action": "No action needed.",
@@ -327,7 +448,7 @@ def _check_pricing_parsability(soup: BeautifulSoup) -> dict:
     if price_schema:
         return {
             "pass": True,
-            "detail": "Prices found in Schema.org itemprop markup -- AI agents can reliably extract your pricing.",
+            "detail": "Prices found in Schema.org itemprop markup -- automated tools can reliably extract your pricing.",
             "action": "No action needed.",
         }
     elif len(price_text) >= 1:
@@ -342,7 +463,7 @@ def _check_pricing_parsability(soup: BeautifulSoup) -> dict:
         }
     return {
         "pass": False,
-        "detail": "No pricing found in static HTML. JavaScript-rendered prices are invisible to AI agents.",
+        "detail": "No pricing found in static HTML. JavaScript-rendered prices are invisible to automated tools.",
         "action": (
             "Ensure at least one pricing tier is in static HTML (not JS-only). "
             "Add `itemprop='price'` markup or a visible pricing section in the page source. "
@@ -369,7 +490,7 @@ def _check_contact_parsability(soup: BeautifulSoup) -> dict:
         }
     return {
         "pass": False,
-        "detail": "No email or phone found in static HTML. AI agents cannot route inquiries to your team.",
+        "detail": "No email or phone found in static HTML. automated tools cannot route inquiries to your team.",
         "action": (
             "Add a plaintext email address to your homepage or footer HTML. "
             "A standard mailto link is sufficient: `<a href='mailto:sales@yourco.com'>sales@yourco.com</a>`. "
@@ -400,20 +521,20 @@ def _check_api_discoverability(base_url: str, session: requests.Session) -> dict
         if cors_present:
             return {
                 "pass": True,
-                "detail": f"API endpoint(s) found: {', '.join(found)}. CORS headers present -- AI agents can call this API cross-origin.",
+                "detail": f"API endpoint(s) found: {', '.join(found)}. CORS headers present -- automated tools can call this API cross-origin.",
                 "action": "No action needed.",
             }
         return {
             "pass": None,
-            "detail": f"API endpoint(s) found ({', '.join(found)}) but no CORS headers detected. AI agents may be blocked from calling your API cross-origin.",
+            "detail": f"API endpoint(s) found ({', '.join(found)}) but no CORS headers detected. automated tools may be blocked from calling your API cross-origin.",
             "action": (
                 "Add `Access-Control-Allow-Origin: *` (or your specific agent domains) to your API responses. "
-                "Without CORS headers, browser-based AI agents and tools cannot invoke your API directly."
+                "Without CORS headers, browser-based automated tools and tools cannot invoke your API directly."
             ),
         }
     return {
         "pass": False,
-        "detail": "No standard API discovery endpoints found. AI agents cannot discover programmatic access to your business.",
+        "detail": "No standard API discovery endpoints found. automated tools cannot discover programmatic access to your business.",
         "action": (
             "If you have an API: publish an OpenAPI spec at `/openapi.json`. "
             "If not: create `/.well-known/ai-plugin.json` with your business name, description, "
@@ -423,14 +544,31 @@ def _check_api_discoverability(base_url: str, session: requests.Session) -> dict
 
 
 def _check_sitemap(base_url: str, session: requests.Session) -> dict:
+    robots_has_sitemap = False
+    try:
+        robots_r = session.get(urljoin(base_url, "/robots.txt"), timeout=5)
+        if robots_r.status_code == 200:
+            robots_has_sitemap = any(
+                line.strip().lower().startswith("sitemap:")
+                for line in robots_r.text.splitlines()
+            )
+    except Exception:
+        pass
+
     try:
         r = session.get(urljoin(base_url, "/sitemap.xml"), timeout=6)
         if r.status_code == 200 and "<url>" in r.text:
             count = len(re.findall(r"<url>", r.text))
+            if robots_has_sitemap:
+                return {
+                    "pass": True,
+                    "detail": f"sitemap.xml found with ~{count} URL(s) and referenced in robots.txt. crawler user agents can systematically discover all your content.",
+                    "action": "No action needed.",
+                }
             return {
                 "pass": True,
-                "detail": f"sitemap.xml found with ~{count} URL(s) -- AI crawlers can systematically discover your content.",
-                "action": "No action needed.",
+                "detail": f"sitemap.xml found with ~{count} URL(s) but not referenced in robots.txt - some crawlers may not auto-discover it.",
+                "action": "Add `Sitemap: https://yourdomain.com/sitemap.xml` to your robots.txt so all crawlers can find it automatically.",
             }
         elif r.status_code == 200:
             return {
@@ -443,7 +581,7 @@ def _check_sitemap(base_url: str, session: requests.Session) -> dict:
             }
         return {
             "pass": False,
-            "detail": "No sitemap.xml found. AI crawlers must guess at your content structure.",
+            "detail": "No sitemap.xml found. crawler user agents must guess at your content structure.",
             "action": (
                 "Generate a sitemap.xml using your CMS or xml-sitemaps.com. "
                 "Place it at `/sitemap.xml` and add `Sitemap: https://yourdomain.com/sitemap.xml` "
@@ -479,13 +617,13 @@ def _check_cookie_consent_wall(soup: BeautifulSoup) -> dict:
             "pass": None,
             "detail": (
                 f"Consent Management Platform detected ({providers}). Cookie consent popups may "
-                "block AI crawlers from seeing JavaScript-loaded content, since crawlers don't "
+                "block crawler user agents from seeing JavaScript-loaded content, since crawlers don't "
                 "interact with consent dialogs."
             ),
             "action": (
                 "Ensure all key content (pricing, product descriptions, contact info) is present "
                 "in static HTML before any consent-gated scripts fire. Test with JavaScript disabled "
-                "in your browser -- if content disappears, AI crawlers can't see it either."
+                "in your browser -- if content disappears, crawler user agents can't see it either."
             ),
         }
     return {
@@ -502,7 +640,7 @@ def _check_content_freshness(headers: dict) -> dict:
     if last_modified and etag:
         return {
             "pass": True,
-            "detail": "Both cache freshness headers present (Last-Modified + ETag). AI crawlers can efficiently decide when to re-index your content.",
+            "detail": "Both cache freshness headers present (Last-Modified + ETag). crawler user agents can efficiently decide when to re-index your content.",
             "action": "No action needed.",
         }
     elif last_modified:
@@ -519,7 +657,7 @@ def _check_content_freshness(headers: dict) -> dict:
         }
     return {
         "pass": False,
-        "detail": "No Last-Modified or ETag headers. AI crawlers cannot determine if your content has changed, leading to inefficient re-crawling or stale indexing.",
+        "detail": "No Last-Modified or ETag headers. crawler user agents cannot determine if your content has changed, leading to inefficient re-crawling or stale indexing.",
         "action": (
             "Enable both headers on your web server. "
             "Nginx: add `etag on;` to your server block. Apache: `FileETag All` in .htaccess. "
@@ -533,7 +671,7 @@ def _check_auth_wall(base_url: str, response: requests.Response, soup: Beautiful
     if any(kw in final_url for kw in LOGIN_KEYWORDS):
         return {
             "pass": False,
-            "detail": f"Homepage redirected to an authentication page ({response.url}). AI agents cannot access gated content.",
+            "detail": f"Homepage redirected to an authentication page ({response.url}). automated tools cannot access gated content.",
             "action": "Ensure public-facing pages are accessible without authentication.",
         }
 
@@ -562,10 +700,10 @@ def _check_auth_wall(base_url: str, response: requests.Response, soup: Beautiful
     if gated:
         return {
             "pass": None,
-            "detail": f"Authentication wall on key sub-pages: {', '.join(gated)}. AI agents cannot read this content.",
+            "detail": f"Authentication wall on key sub-pages: {', '.join(gated)}. automated tools cannot read this content.",
             "action": (
                 "Consider making at least a summary of pricing and docs publicly accessible. "
-                "Even a static overview page helps AI agents understand your offering without login."
+                "Even a static overview page helps automated tools understand your offering without login."
             ),
         }
 
@@ -596,18 +734,115 @@ def _check_mcp_discoverability(base_url: str, session: requests.Session) -> dict
     if found:
         return {
             "pass": True,
-            "detail": f"MCP manifest found: {', '.join(found)}. AI agents supporting the Model Context Protocol can discover and invoke your tools.",
+            "detail": f"MCP manifest found: {', '.join(found)}. automated tools supporting the Model Context Protocol can discover and invoke your tools.",
             "action": "No action needed.",
         }
     return {
         "pass": False,
-        "detail": "No MCP (Model Context Protocol) manifest found. AI agents cannot discover your available tools or actions.",
+        "detail": "No MCP (Model Context Protocol) manifest found. automated tools cannot discover your available tools or actions.",
         "action": (
             "Publish an MCP manifest at /.well-known/mcp.json listing tools your site or API exposes "
             "(e.g., product lookup, quote generation, support ticket creation). "
-            "MCP is an emerging standard -- early adopters gain agent framework compatibility first."
+            "MCP is an emerging standard -- early adopters gain tool framework compatibility first."
         ),
     }
+
+
+def _extract_company_name(soup: BeautifulSoup, base_url: str) -> str:
+    if soup.title:
+        raw = soup.title.get_text(strip=True)
+        parts = re.split(r'\s*[\|\-]\s*', raw)
+        name = parts[-1].strip() if len(parts) > 1 else parts[0].strip()
+        if name:
+            return name
+    return urlparse(base_url).netloc.lstrip("www.")
+
+
+def _generate_llms_txt_template(base_url: str, company: str, subpages: dict) -> str:
+    pricing_url = subpages.get("pricing", {}).get("url", f"{base_url}/pricing")
+    docs_url    = subpages.get("docs",    {}).get("url", f"{base_url}/docs")
+    contact_url = subpages.get("contact", {}).get("url", f"{base_url}/contact")
+
+    lines = [
+        f"# {company}",
+        "",
+        f"> Replace this line with a 1-2 sentence description of what {company} does and who it serves.",
+        "",
+        "## Key Pages",
+        "",
+        f"- [Home]({base_url})",
+        f"- [Pricing]({pricing_url})",
+        f"- [Documentation]({docs_url})",
+        f"- [Contact]({contact_url})",
+        "",
+        "## About",
+        "",
+        f"{company} is a [describe your business type]. We help [target customer] to [value proposition].",
+        "",
+        "## For Automated Tools",
+        "",
+        "- Pricing model: [subscription / usage-based / flat-fee / contact-for-pricing]",
+        "- Free trial: [yes - N days / no]",
+        f"- API available: [yes - see {docs_url} / no]",
+        "- Primary support channel: [email / chat / phone]",
+    ]
+    return "\n".join(lines)
+
+
+def _generate_json_ld_snippet(base_url: str, company: str, subpages: dict) -> str:
+    pricing_url = subpages.get("pricing", {}).get("url", f"{base_url}/pricing")
+    contact_url = subpages.get("contact", {}).get("url", f"{base_url}/contact")
+
+    schema = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Organization",
+                "name": company,
+                "url": base_url,
+                "description": f"Replace with a 1-2 sentence description of {company}.",
+                "contactPoint": {
+                    "@type": "ContactPoint",
+                    "contactType": "sales",
+                    "url": contact_url,
+                },
+            },
+            {
+                "@type": "SoftwareApplication",
+                "name": company,
+                "applicationCategory": "BusinessApplication",
+                "url": base_url,
+                "offers": {
+                    "@type": "Offer",
+                    "url": pricing_url,
+                    "priceCurrency": "USD",
+                    "description": "Replace with pricing tier description.",
+                },
+            },
+            {
+                "@type": "FAQPage",
+                "mainEntity": [
+                    {
+                        "@type": "Question",
+                        "name": f"What does {company} do?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": f"Replace with a clear answer about what {company} offers.",
+                        },
+                    },
+                    {
+                        "@type": "Question",
+                        "name": f"How much does {company} cost?",
+                        "acceptedAnswer": {
+                            "@type": "Answer",
+                            "text": f"Replace with pricing information. See {pricing_url} for details.",
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+    return json.dumps(schema, indent=2)
 
 
 def _detect_subpages(soup: BeautifulSoup, base_url: str) -> dict:
@@ -656,7 +891,7 @@ def scan_stream(url: str):
 
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "agentready-scanner/1.0 (AI agent readiness audit; https://github.com/mohanishmhatre/agentready)"
+        "User-Agent": "agentready-scanner/1.0 (automated tool readiness audit; https://github.com/mohanishmhatre/agentready)"
     })
 
     try:
@@ -669,6 +904,7 @@ def scan_stream(url: str):
 
     parsed = urlparse(url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
+    company = _extract_company_name(soup, base_url)
 
     check_fns = {
         "ai_crawler_access":   lambda: _check_ai_crawler_access(base_url, session),
@@ -717,6 +953,7 @@ def scan_stream(url: str):
             "effort_level":  effort_level,
             "effort_time":   effort_time,
         }
+        check_result = _with_research(key, check_result)
         results.append({k: v for k, v in check_result.items() if k != "type"})
         yield check_result
 
@@ -744,14 +981,30 @@ def scan_stream(url: str):
             entry["js_rendering"]    = _check_js_rendering(sub_soup)
         subpages[page_type] = entry
 
-    yield {
-        "type":            "complete",
-        "url":             url,
-        "score":           score,
-        "checks":          results,
-        "recommendations": fails_and_warnings,
-        "subpages":        subpages,
+    by_key = {c["key"]: c for c in results}
+    llms_txt_template = (
+        _generate_llms_txt_template(base_url, company, subpages)
+        if by_key.get("llms_txt", {}).get("status") in ("fail", "warning")
+        else None
+    )
+    json_ld_snippet = (
+        _generate_json_ld_snippet(base_url, company, subpages)
+        if by_key.get("structured_data", {}).get("status") in ("fail", "warning")
+        else None
+    )
+
+    complete_result = {
+        "type":               "complete",
+        "url":                url,
+        "score":              score,
+        "checks":             results,
+        "recommendations":    fails_and_warnings,
+        "subpages":           subpages,
+        "llms_txt_template":  llms_txt_template,
+        "json_ld_snippet":    json_ld_snippet,
     }
+    complete_result["next_step"] = _derive_next_step(complete_result)
+    yield complete_result
 
 
 def scan(url: str) -> dict:

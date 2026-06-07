@@ -1,23 +1,23 @@
 import type { CheckResult } from "@/types/scan";
 
 const EFFORT_COLOR: Record<string, string> = {
-  Easy:   "text-green-500",
+  Easy: "text-green-500",
   Medium: "text-amber-500",
-  Hard:   "text-red-500",
+  Hard: "text-red-500",
 };
 
 export default function FixList({ recs }: { recs: CheckResult[] }) {
   if (!recs.length) {
     return (
       <p className="text-sm text-green-400 leading-relaxed">
-        All checks passed — your site is well-positioned for agentic commerce.
+        All checks passed. Your site exposes the core machine-readable signals.
       </p>
     );
   }
 
   return (
     <div>
-      <p className="text-xs text-gray-600 mb-4">Sorted by points available — highest ROI first.</p>
+      <p className="text-xs text-gray-600 mb-4">Sorted by points available - highest ROI first.</p>
       <div>
         {recs.map((r, i) => (
           <div
@@ -32,7 +32,7 @@ export default function FixList({ recs }: { recs: CheckResult[] }) {
                 <span className="text-sm font-semibold text-gray-100">{r.check}</span>
                 <span className="text-xs text-gray-600">+{r.points_lost} pts</span>
                 <span className={`text-xs font-semibold ${EFFORT_COLOR[r.effort_level]}`}>
-                  {r.effort_level} · {r.effort_time}
+                  {r.effort_level} - {r.effort_time}
                 </span>
               </div>
               <p className="text-xs text-gray-400 leading-relaxed">{r.action}</p>

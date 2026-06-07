@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "agentready — AI Agent Readiness Scanner",
-  description: "Find out if AI purchasing agents can discover, parse, and act on your website.",
+  title: "agentready - Machine-Readable Website Scanner",
+  description: "Find out if crawlers, parsers, and automated tools can discover and use your website.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

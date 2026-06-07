@@ -11,6 +11,28 @@ export interface CheckResult {
   action: string;
   effort_level: "Easy" | "Medium" | "Hard";
   effort_time: string;
+  research_source?: ResearchSource;
+  confidence?: "high" | "medium" | "low";
+}
+
+export interface ResearchSource {
+  title: string;
+  url: string;
+  rationale: string;
+  last_reviewed: string;
+}
+
+export interface NextStep {
+  key: string;
+  label: string;
+  action: string;
+  points_gain: number;
+  effort_level?: "Easy" | "Medium" | "Hard";
+  effort_time?: string;
+  detail?: string;
+  research_source?: ResearchSource;
+  confidence?: "high" | "medium" | "low";
+  workflow?: string[];
 }
 
 export interface SubpageCheck {
@@ -33,6 +55,11 @@ export interface ScanResult {
   checks: CheckResult[];
   recommendations: CheckResult[];
   subpages: Record<string, SubpageResult>;
+  llms_txt_template?: string | null;
+  json_ld_snippet?: string | null;
+  scan_id?: number;
+  pipeline_run_id?: number;
+  next_step?: NextStep;
 }
 
 export type ScanPhase = "idle" | "scanning" | "complete" | "error";

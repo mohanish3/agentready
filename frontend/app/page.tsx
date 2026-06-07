@@ -21,11 +21,11 @@ export default function Home() {
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 sm:px-6 py-10 space-y-8">
         <div>
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight mb-2 leading-tight">
-            Is your site ready<br className="sm:hidden" /> for AI agents?
+            Make your site machine-readable.
           </h1>
           <p className="text-sm text-gray-400 leading-relaxed max-w-sm">
-            AI purchasing agents are evaluating your competitors right now.
-            Find out if they can even find <em>you</em>.
+            Scan one domain. Get the exact next technical fix for crawler access,
+            structured data, pricing, contact, and API discovery.
           </p>
         </div>
 

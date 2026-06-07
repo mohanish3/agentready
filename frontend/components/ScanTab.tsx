@@ -6,6 +6,8 @@ import CheckCard from "./CheckCard";
 import ScoreGauge from "./ScoreGauge";
 import FixList from "./FixList";
 import SubpageAnalysis from "./SubpageAnalysis";
+import FixToolkit from "./FixToolkit";
+import NextStepPanel from "./NextStepPanel";
 
 const EXAMPLES = ["stripe.com", "hubspot.com", "salesforce.com"];
 const TOTAL_CHECKS = 12;
@@ -123,9 +125,12 @@ export default function ScanTab() {
       {phase === "complete" && result && (
         <div className="space-y-10 animate-fade-in">
 
+          {/* Next action */}
+          <NextStepPanel result={result} onRescan={() => startScan(result.url)} />
+
           {/* Score */}
-          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-            <div className="w-44 shrink-0">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 rounded-lg border border-white/[0.06] p-4">
+            <div className="w-32 shrink-0">
               <ScoreGauge score={result.score} />
             </div>
             <div className="flex-1 w-full space-y-4 sm:pt-2">
@@ -170,10 +175,13 @@ export default function ScanTab() {
           {/* Priority fixes */}
           <section>
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-4">
-              Priority Fixes
+              Remaining Fixes
             </p>
             <FixList recs={result.recommendations} />
           </section>
+
+          {/* Copy-paste fix toolkit */}
+          <FixToolkit result={result} />
 
           {/* All checks (collapsible) */}
           <section>

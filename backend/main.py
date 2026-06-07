@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
-from scanner import scan, scan_stream, CHECKS
+from scanner import CHECKS, scan
+from pipeline import run_scan_pipeline, scan_pipeline_stream
 from reports import generate_txt, generate_pdf
 
 app = FastAPI(title="agentready API")
@@ -36,7 +37,7 @@ def health():
 @app.get("/api/scan/stream")
 def scan_stream_endpoint(url: str):
     def generate():
-        for event in scan_stream(url):
+        for event in scan_pipeline_stream(url):
             yield f"data: {json.dumps(event)}\n\n"
         yield "data: [DONE]\n\n"
 
@@ -52,7 +53,7 @@ def scan_stream_endpoint(url: str):
 
 @app.post("/api/scan")
 def scan_endpoint(body: ScanRequest) -> dict[str, Any]:
-    result = scan(body.url)
+    result = run_scan_pipeline(body.url)
     if "error" in result:
         raise HTTPException(status_code=422, detail=result["error"])
     return result
