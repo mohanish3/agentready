@@ -274,17 +274,42 @@ def _check_llms_txt(base_url: str, session: requests.Session) -> dict:
         has_blockquote = any(line.startswith("> ") for line in lines)
         has_link = bool(re.search(r'\[.+?\]\(https?://', content))
 
+        # Check for product, pricing, and contact sections
+        has_product_section = bool(re.search(r'(product|offer|service|solution|what we do|what you do)', content, re.IGNORECASE))
+        has_pricing_section = bool(re.search(r'(pricing|price|cost|plans|subscription|tier|offer)', content, re.IGNORECASE))
+        has_contact_section = bool(re.search(r'(contact|email|support|sales|get in touch)', content, re.IGNORECASE))
+
         structure_count = sum([has_h1, has_blockquote, has_link])
 
-        if structure_count >= 2:
+        # Section completeness check (new requirement from llmstxt.org spec)
+        section_present = sum([has_product_section, has_pricing_section, has_contact_section])
+
+        if structure_count >= 2 and section_present >= 2:
             found = []
             if has_h1:         found.append("H1 title")
             if has_blockquote: found.append("blockquote summary")
             if has_link:       found.append("linked pages")
+            if has_product_section: found.append("product/offer section")
+            if has_pricing_section: found.append("pricing section")
+            if has_contact_section: found.append("contact section")
             return {
                 "pass": True,
-                "detail": f"llms.txt is well-structured ({', '.join(found)}) -- automated tools have reliable, parseable context about your business.",
+                "detail": f"llms.txt is complete with {', '.join(found)} -- automated tools have reliable, parseable context about your business, offerings, pricing, and how to contact you.",
                 "action": "No action needed.",
+            }
+        elif structure_count >= 2:
+            missing_sections = []
+            if not has_product_section: missing_sections.append("product/offer description")
+            if not has_pricing_section: missing_sections.append("pricing information")
+            if not has_contact_section: missing_sections.append("contact information")
+            return {
+                "pass": None,
+                "detail": f"llms.txt has basic structure but is missing key business sections -- AI models may lack critical context.",
+                "action": (
+                    f"Add the missing sections: {'; '.join(missing_sections)}. "
+                    "According to llmstxt.org spec, include: product/offer description, pricing/tiers, and contact info. "
+                    "This enables automated tools to make procurement decisions without human intervention."
+                ),
             }
         elif len(content) > 80:
             missing = []
@@ -884,15 +909,18 @@ def _fetch_subpage(url: str, session: requests.Session):
         return None
 
 
-def scan_stream(url: str):
+def scan_stream(url: str, user_agent: str = None, fail_below: int = None):
     """Generator that yields SSE-ready dicts for each check, then a final complete event."""
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
 
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": "agentready-scanner/1.0 (automated tool readiness audit; https://github.com/mohanishmhatre/agentready)"
-    })
+    if user_agent:
+        session.headers.update({"User-Agent": user_agent})
+    else:
+        session.headers.update({
+            "User-Agent": "agentready-scanner/1.0 (automated tool readiness audit; https://github.com/mohanishmhatre/agentready)"
+        })
 
     try:
         r = session.get(url, timeout=10)
@@ -993,6 +1021,16 @@ def scan_stream(url: str):
         else None
     )
 
+    # Check if we should fail based on fail_below threshold
+    fail_event = None
+    if fail_below is not None and score < fail_below:
+        fail_event = {
+            "type": "fail",
+            "fail_reason": f"Score ({score}) is below minimum threshold ({fail_below})",
+            "score": score,
+            "fail_below": fail_below,
+        }
+
     complete_result = {
         "type":               "complete",
         "url":                url,
@@ -1005,11 +1043,14 @@ def scan_stream(url: str):
     }
     complete_result["next_step"] = _derive_next_step(complete_result)
     yield complete_result
+    
+    if fail_event:
+        yield fail_event
 
 
-def scan(url: str) -> dict:
+def scan(url: str, user_agent: str = None) -> dict:
     """Blocking scan that collects the stream into a single result dict."""
-    for event in scan_stream(url):
+    for event in scan_stream(url, user_agent):
         if event.get("type") == "complete":
             return {k: v for k, v in event.items() if k != "type"}
         if event.get("type") == "error":
