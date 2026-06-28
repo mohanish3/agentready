@@ -5,12 +5,12 @@ from scanner import scan_stream
 from storage import DEFAULT_DB_PATH, finish_pipeline_run, save_scan_result, start_pipeline_run
 
 
-def scan_pipeline_stream(url: str, db_path: str | Path = DEFAULT_DB_PATH) -> Iterator[dict]:
+def scan_pipeline_stream(url: str, fail_below: int = None, db_path: str | Path = DEFAULT_DB_PATH) -> Iterator[dict]:
     run_id = start_pipeline_run(url, db_path=db_path)
     scan_id = None
 
     try:
-        for event in scan_stream(url):
+        for event in scan_stream(url, fail_below=fail_below):
             if event.get("type") == "complete":
                 scan_id = save_scan_result({k: v for k, v in event.items() if k != "type"}, db_path=db_path)
                 event["scan_id"] = scan_id
@@ -30,8 +30,8 @@ def scan_pipeline_stream(url: str, db_path: str | Path = DEFAULT_DB_PATH) -> Ite
         raise
 
 
-def run_scan_pipeline(url: str, db_path: str | Path = DEFAULT_DB_PATH) -> dict:
-    for event in scan_pipeline_stream(url, db_path=db_path):
+def run_scan_pipeline(url: str, fail_below: int = None, db_path: str | Path = DEFAULT_DB_PATH) -> dict:
+    for event in scan_pipeline_stream(url, fail_below=fail_below, db_path=db_path):
         if event.get("type") == "complete":
             return {k: v for k, v in event.items() if k != "type"}
         if event.get("type") == "error":

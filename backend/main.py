@@ -23,10 +23,13 @@ app.add_middleware(
 
 class ScanRequest(BaseModel):
     url: str
+    user_agent: str | None = None
+    fail_below: int | None = None
 
 
 class CompareRequest(BaseModel):
     urls: list[str]
+    previous_results: list[dict] | None = None
 
 
 @app.get("/health")
@@ -53,7 +56,7 @@ def scan_stream_endpoint(url: str):
 
 @app.post("/api/scan")
 def scan_endpoint(body: ScanRequest) -> dict[str, Any]:
-    result = run_scan_pipeline(body.url)
+    result = run_scan_pipeline(body.url, fail_below=body.fail_below)
     if "error" in result:
         raise HTTPException(status_code=422, detail=result["error"])
     return result
@@ -64,6 +67,7 @@ def compare_endpoint(body: CompareRequest) -> list[dict[str, Any]]:
     urls = body.urls[:3]
     ordered = list(urls)
     results_map: dict[str, Any] = {}
+    previous_results = body.previous_results or []
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(scan, u): u for u in urls}
@@ -74,7 +78,35 @@ def compare_endpoint(body: CompareRequest) -> list[dict[str, Any]]:
             except Exception as e:
                 results_map[u] = {"url": u, "error": str(e)}
 
-    return [results_map[u] for u in ordered if u in results_map]
+    # Build comparison view
+    comparison = []
+    for url, result in results_map.items():
+        if "error" in result:
+            comparison.append({"url": url, "error": result["error"]})
+            continue
+        
+        comp_entry = {
+            "url": url,
+            "score": result.get("score"),
+            "checks": result.get("checks", []),
+        }
+        
+        # Compare with previous results if available
+        prev = next((p for p in previous_results if p.get("url") == url), None)
+        if prev and "score" in prev:
+            comp_entry["previous_score"] = prev["score"]
+            score_change = result["score"] - prev["score"]
+            comp_entry["score_change"] = score_change
+            if score_change > 0:
+                comp_entry["trend"] = "improved"
+            elif score_change < 0:
+                comp_entry["trend"] = "degraded"
+            else:
+                comp_entry["trend"] = "unchanged"
+        
+        comparison.append(comp_entry)
+    
+    return comparison
 
 
 @app.post("/api/report/txt")
