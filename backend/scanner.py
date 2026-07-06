@@ -165,7 +165,7 @@ GENERIC_SCHEMA_TYPES = {"Organization", "WebSite", "WebPage", "BreadcrumbList"}
 
 CSR_ROOT_IDS = ["root", "app", "__next", "gatsby-focus-wrapper", "nuxt", "__nuxt"]
 
-AI_BOTS = ["GPTBot", "ClaudeBot", "anthropic-ai", "PerplexityBot", "ChatGPT-User"]
+AI_BOTS = ["GPTBot", "ClaudeBot", "PerplexityBot", "CCBot", "GoogleExtendedBot"]
 
 CMP_SCRIPT_SIGNATURES = [
     "cookielaw.org", "onetrust.com", "cookiebot.com", "trustarc.com",
@@ -202,38 +202,65 @@ def _check_ai_crawler_access(base_url: str, session: requests.Session) -> dict:
                 "action": "No action needed.",
             }
 
-        blocked = []
         lines = r.text.splitlines()
         current_agents = []
 
+        # Parse robots.txt rules per agent
+        rules = {}
         for line in lines:
             line = line.strip()
+            if not line or line.startswith("#"):
+                continue
             if line.lower().startswith("user-agent:"):
-                current_agents = [line.split(":", 1)[1].strip()]
+                agent = line.split(":", 1)[1].strip()
+                current_agents.append(agent)
             elif line.lower().startswith("disallow:"):
                 path = line.split(":", 1)[1].strip()
-                if path in ("/", "/*"):
-                    for agent in current_agents:
-                        for bot in AI_BOTS:
-                            if bot.lower() == agent.lower():
-                                blocked.append(bot)
-                        if agent == "*":
-                            blocked.append("all crawlers (Disallow: /)")
+                rules.setdefault(agent, []).append(path)
 
-        blocked = list(set(blocked))
-        if blocked:
+        # Check each specific crawler agent individually
+        crawler_details = []
+        all_blocked = False
+
+        for bot in AI_BOTS:
+            bot_status = "allowed"
+            bot_reason = None
+
+            if "*" in current_agents:
+                for rule in rules.get("*", []):
+                    if rule in ("/", "/*"):
+                        bot_status = "blocked"
+                        bot_reason = f"Wildcard Disallow: {rule}"
+                        all_blocked = True
+                        break
+
+            if bot_status != "blocked":
+                for agent in current_agents:
+                    if agent.lower() == bot.lower() or agent == "*":
+                        for rule in rules.get(agent, []):
+                            if rule in ("/", "/*"):
+                                bot_status = "blocked"
+                                bot_reason = f"Disallow: {rule}"
+                                all_blocked = True
+                                break
+
+            crawler_details.append({
+                "agent": bot,
+                "status": bot_status,
+                "reason": bot_reason
+            })
+
+        if all_blocked:
+            blocked_agents = [d["agent"] for d in crawler_details if d["status"] == "blocked"]
             return {
                 "pass": False,
-                "detail": f"Blocking: {', '.join(blocked)}. These agents cannot index your site.",
-                "action": (
-                    "Edit robots.txt: remove `Disallow: /` rules for GPTBot, ClaudeBot, "
-                    "anthropic-ai, and PerplexityBot. If a wildcard `Disallow: /` is present, "
-                    "add an explicit `Allow: /` block for each AI bot above it."
-                ),
+                "detail": f"Per-crawler breakdown: {blocked_agents} blocked. Remaining: {[d['agent'] for d in crawler_details if d['status'] == 'allowed']}.",
+                "action": "Edit robots.txt: remove `Disallow: /` rules for blocked agents. Add explicit `Allow: /` blocks above wildcard rules.",
             }
+        
         return {
             "pass": True,
-            "detail": f"No crawler user agents blocked. Checked: {', '.join(AI_BOTS)}.",
+            "detail": f"Per-crawler breakdown: All checked agents (GPTBot, ClaudeBot, PerplexityBot, CCBot, GoogleExtendedBot) are allowed.",
             "action": "No action needed.",
         }
     except Exception as e:
