@@ -1,11 +1,13 @@
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse, JSONResponse
 from pydantic import BaseModel
+from storage import save_scan_result, get_scan
 
 from scanner import CHECKS, scan
 from pipeline import run_scan_pipeline, scan_pipeline_stream
@@ -59,6 +61,47 @@ def scan_endpoint(body: ScanRequest) -> dict[str, Any]:
     result = run_scan_pipeline(body.url, fail_below=body.fail_below)
     if "error" in result:
         raise HTTPException(status_code=422, detail=result["error"])
+    return result
+
+
+@app.get("/api/scan/{domain}/raw")
+def scan_raw_endpoint(domain: str):
+    """
+    GET /api/scan/:domain/raw
+    
+    Returns the most recent scan result in structured JSON format.
+    Returns 200 with scan result if exists, 404 if no scan found for domain.
+    """
+    # Extract domain from URL
+    parsed = urlparse(domain)
+    url = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme else domain
+    
+    # Try to get cached scan result
+    result = get_scan()
+    
+    # Filter by URL if multiple scans exist
+    if result is None or not isinstance(result, list):
+        # No cached results, return 404
+        return JSONResponse(status_code=404, content={"error": "No scan results found"})
+    
+    # Find most recent scan for this domain
+    domain_scans = [r for r in result if r.get("url") == url]
+    if not domain_scans:
+        return JSONResponse(status_code=404, content={"error": "No scan found for this domain"})
+    
+    # Return the most recent scan
+    latest = domain_scans[-1]
+    return JSONResponse(status_code=200, content=latest)
+
+
+@app.post("/api/scan")
+def scan_endpoint_with_save(body: ScanRequest) -> dict[str, Any]:
+    """Scan endpoint that saves result to storage."""
+    result = run_scan_pipeline(body.url, fail_below=body.fail_below)
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+    # Save to storage
+    save_scan_result(result)
     return result
 
 
