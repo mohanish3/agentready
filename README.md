@@ -1,75 +1,61 @@
 # agentready
 
-> Scan any B2B website and find out if AI purchasing agents can actually do business with you.
+Static analysis tool that scores whether a website is machine-readable by AI agents: crawlable, parseable pricing and contact info, structured data, and API discoverability.
 
-**by Mohanish** · MIT License
+## Problem
 
----
+AI agents increasingly act as intermediaries in B2B research and procurement. A site built only for human browsers — pricing rendered client-side, no structured data, crawlers blocked in robots.txt — is invisible to those agents regardless of how it looks to a person.
 
-## The Problem
+Existing GEO tools (Profound, Peec AI) measure whether a brand is *mentioned* in AI answers. They do not check whether an agent can extract pricing, contact details, or a machine-readable product description from the site itself. agentready checks that directly, with deterministic rules rather than an LLM call.
 
-GEO tools (Profound, Peec AI, Gauge) track whether AI assistants *mention* your brand. That's a brand awareness metric. It doesn't tell you whether an AI agent can *act* — find your pricing, route an inquiry, discover your API, or complete a procurement workflow.
+## What it checks
 
-Most B2B websites are built for human browsers. They block AI crawlers in robots.txt, hide prices behind JavaScript, bury contact info in PDFs, and have no machine-readable description of what they actually sell. As AI agents take over B2B buying workflows, these sites become invisible to the systems making the decisions.
+8 checks run against the static HTML response of the target URL. No LLM involved — every result is reproducible.
 
-**The cost of inaction:** Gartner projects that by end of 2026, 40% of enterprise applications will embed AI agents for procurement and vendor evaluation. A site that scores poorly on agent-readiness gets filtered out before a human ever sees it.
+| Check | Points | Tests |
+|---|---|---|
+| AI crawler access | 20 | robots.txt does not block GPTBot, ClaudeBot, PerplexityBot |
+| llms.txt | 15 | Present, with H1 title, blockquote summary, linked pages |
+| Structured data | 20 | JSON-LD present; FAQPage/Product/SoftwareApplication scores above a generic Organization type |
+| JavaScript rendering | 15 | Key content present in the raw HTML response — AI crawlers do not execute JavaScript |
+| Pricing parsability | 15 | Prices visible in static HTML |
+| Contact parsability | 10 | Email or phone findable without JavaScript execution |
+| API discoverability | 10 | `/openapi.json` or `/.well-known/ai-plugin.json` present |
+| Sitemap | 10 | Valid `sitemap.xml` |
 
----
-
-## Who This Is For
-
-- **B2B growth and RevOps teams** preparing for agentic commerce
-- **Website owners and developers** who want a technical checklist, not just brand tracking
-- **Agencies** auditing client sites before launching AI-driven GTM motions
-
----
-
-## Why Nothing Else Works
-
-| Tool | What it does | What it misses |
-|------|-------------|----------------|
-| Profound / Peec AI | Tracks if AI mentions your brand | Doesn't audit technical actionability |
-| Google Lighthouse | Audits human UX (speed, accessibility) | Zero awareness of AI agent access patterns |
-| Manual checklist | Whatever you remember to check | Inconsistent, not repeatable |
-
----
-
-## What Success Looks Like
-
-A 100/100 score means: any AI purchasing agent that discovers your site can understand what you sell, see your pricing, find how to contact you, and optionally transact programmatically via your API. No human required to interpret your site.
-
----
+Score is normalized to 0–100.
 
 ## Quickstart
 
+Backend (FastAPI):
+
 ```bash
-git clone https://github.com/mohanishmhatre/agentready
-cd agentready
+git clone https://github.com/mohanish3/agentready
+cd agentready/backend
 pip install -r requirements.txt
-streamlit run app.py
+uvicorn main:app --reload --port 8000
 ```
 
-Then enter any URL in the browser UI.
+Frontend (Next.js), in a second terminal:
 
----
+```bash
+cd agentready/frontend
+npm install
+npm run dev
+```
 
-## The 8 Checks
+Open `http://localhost:3000` and enter a URL to scan.
 
-| Check | Points | What it tests |
-|-------|--------|---------------|
-| AI Crawler Access | 20 | robots.txt not blocking GPTBot, ClaudeBot, PerplexityBot |
-| llms.txt | 15 | /llms.txt with proper structure: H1 title, blockquote summary, linked pages |
-| Structured Data | 20 | JSON-LD types graded by quality — FAQPage/Product/SoftwareApplication score higher than generic Organization |
-| JavaScript Rendering | 15 | Key content present in static HTML — AI crawlers don't execute JavaScript |
-| Pricing Parsability | 15 | Prices visible in static HTML, not just JavaScript |
-| Contact Parsability | 10 | Email/phone findable without JavaScript execution |
-| API Discoverability | 10 | /openapi.json or /.well-known/ai-plugin.json present |
-| Sitemap.xml | 10 | Valid sitemap for systematic content discovery |
+## How it works
 
-Score is normalised to 0–100 across all checks.
+Fetches the target URL and its `robots.txt` with a declared scanner user agent, runs the 8 checks against the static HTML response, and returns a per-check score breakdown with remediation notes.
 
----
+## Who it's for
 
-## How It Works
+- B2B growth and RevOps teams auditing sites ahead of agentic-commerce workflows
+- Developers who want a technical checklist rather than a brand-mention tracker
+- Agencies auditing client sites before an AI-driven GTM push
 
-agentready fetches your URL and robots.txt with a declared scanner user-agent, then runs 7 deterministic checks against the static HTML response. No LLM involved — every finding is reproducible and explainable. Each check is independently scored, so you get a breakdown of exactly where you're losing points and what to do about it.
+## License
+
+MIT
