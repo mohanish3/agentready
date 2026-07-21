@@ -4,7 +4,7 @@ Static analysis tool that scores whether a website is machine-readable by AI age
 
 ## Problem
 
-AI agents increasingly act as intermediaries in B2B research and procurement. A site built only for human browsers — pricing rendered client-side, no structured data, crawlers blocked in robots.txt — is invisible to those agents regardless of how it looks to a person.
+AI agents increasingly act as intermediaries in B2B research and procurement. A site built only for human browsers (pricing rendered client-side, no structured data, crawlers blocked in robots.txt) is invisible to those agents regardless of how it looks to a person.
 
 Existing GEO tools (Profound, Peec AI) measure whether a brand is *mentioned* in AI answers. They do not check whether an agent can extract pricing, contact details, or a machine-readable product description from the site itself. agentready checks that directly, with deterministic rules rather than an LLM call.
 
@@ -17,7 +17,7 @@ Existing GEO tools (Profound, Peec AI) measure whether a brand is *mentioned* in
 | AI crawler access | 20 | robots.txt does not block GPTBot, ClaudeBot, PerplexityBot |
 | llms.txt | 15 | Present, with H1 title, blockquote summary, linked pages |
 | Structured data | 20 | JSON-LD present; FAQPage/Product/SoftwareApplication scores above a generic Organization type |
-| JavaScript rendering | 15 | Key content present in the raw HTML response — AI crawlers do not execute JavaScript |
+| JavaScript rendering | 15 | Key content present in the raw HTML response, since AI crawlers do not execute JavaScript |
 | Pricing parsability | 15 | Prices visible in static HTML |
 | Contact parsability | 10 | Email or phone findable without JavaScript execution |
 | API discoverability | 10 | `/openapi.json` or `/.well-known/ai-plugin.json` present |
