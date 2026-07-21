@@ -1,6 +1,7 @@
 import re
 import json
 import requests
+import requests.exceptions
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
@@ -566,7 +567,9 @@ def _check_api_discoverability(base_url: str, session: requests.Session) -> dict
                 found.append(path)
                 if r.headers.get("Access-Control-Allow-Origin"):
                     cors_present = True
-        except Exception:
+        except requests.exceptions.HTTPError:
+            pass
+        except requests.exceptions.RequestException:
             pass
 
     if found:
@@ -604,7 +607,9 @@ def _check_sitemap(base_url: str, session: requests.Session) -> dict:
                 line.strip().lower().startswith("sitemap:")
                 for line in robots_r.text.splitlines()
             )
-    except Exception:
+    except requests.exceptions.HTTPError:
+        pass
+    except requests.exceptions.RequestException:
         pass
 
     try:
@@ -932,6 +937,8 @@ def _fetch_subpage(url: str, session: requests.Session):
         if r.status_code != 200:
             return None
         return BeautifulSoup(r.text, "html.parser")
+    except requests.exceptions.RequestException:
+        return None
     except Exception:
         return None
 
@@ -953,6 +960,9 @@ def scan_stream(url: str, user_agent: str = None, fail_below: int = None):
         r = session.get(url, timeout=10)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
+    except requests.exceptions.HTTPError as e:
+        yield {"type": "error", "error": f"HTTP Error: {e.response.status_code} {e.reason}"}
+        return
     except Exception as e:
         yield {"type": "error", "error": str(e)}
         return

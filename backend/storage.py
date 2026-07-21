@@ -3,7 +3,7 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "agentready.sqlite3"
@@ -165,3 +165,44 @@ def get_scan(scan_id: int, db_path: str | Path = DEFAULT_DB_PATH) -> dict[str, A
     if row is None:
         return None
     return json.loads(row["result_json"])
+
+
+def get_all_scans(db_path: str | Path = DEFAULT_DB_PATH) -> list[dict[str, Any]]:
+    """Get all scans ordered by created_at descending."""
+    with closing(connect(db_path)) as conn:
+        rows = conn.execute("select * from scans order by created_at desc").fetchall()
+    results = []
+    for row in rows:
+        result = {
+            "id": row["id"],
+            "url": row["url"],
+            "score": row["score"],
+            "created_at": row["created_at"],
+        }
+        result["result_json"] = json.loads(row["result_json"])
+        results.append(result)
+    return results
+
+
+def get_last_scan_by_url(url: str, db_path: str | Path = DEFAULT_DB_PATH) -> dict[str, Any] | None:
+    """Get the most recent scan for a specific URL."""
+    with closing(connect(db_path)) as conn:
+        row = conn.execute(
+            "select * from scans where url = ? order by created_at desc limit 1",
+            (url,)
+        ).fetchone()
+    if row is None:
+        return None
+    result = {
+        "id": row["id"],
+        "url": row["url"],
+        "score": row["score"],
+        "created_at": row["created_at"],
+    }
+    result["result_json"] = json.loads(row["result_json"])
+    return result
+
+
+def get_last_scan(db_path: str | Path = DEFAULT_DB_PATH) -> list[dict[str, Any]]:
+    """Get all scans in reverse chronological order (alias for get_all_scans)."""
+    return get_all_scans(db_path)
