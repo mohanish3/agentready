@@ -5,7 +5,7 @@ from pathlib import Path
 
 try:
     from fastapi import FastAPI, HTTPException, Query
-    from fastapi.responses import HTMLResponse
+    from fastapi.responses import HTMLResponse, Response
     from fastapi.staticfiles import StaticFiles
     from fastapi.middleware.cors import CORSMiddleware
     
@@ -142,7 +142,7 @@ def make_badge_app() -> FastAPI:
     def badge_image(domain: str, score: Optional[int] = Query(None)) -> bytes:
         """Get badge as image bytes."""
         content = generate_svg_with_domain(score or 0, domain)
-        return content.encode("utf-8"), "image/svg+xml"
+        return Response(content=content.encode("utf-8"), media_type="image/svg+xml")
     
     @app.get("/health")
     def health():
