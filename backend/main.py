@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+import storage
+
 from scanner import CHECKS, scan
 from pipeline import run_scan_pipeline, scan_pipeline_stream
 from reports import generate_txt, generate_pdf
@@ -137,3 +139,16 @@ def report_pdf(result: dict[str, Any]):
 @app.get("/api/checks")
 def list_checks():
     return [{"key": k, "label": l, "max_pts": p} for k, l, p in CHECKS]
+
+
+@app.get("/api/trend")
+def trend_endpoint(url: str, n: int = 5):
+    """Return the last ``n`` scan scores for a URL as a time series.
+
+    ``delta`` is the change from the previous scan (last minus
+    second-to-last) and is ``None`` when fewer than two scans exist.
+    """
+    scans = storage.get_recent_scans_for_url(url, n=n)
+    scores = [s["score"] for s in scans]
+    delta = scores[-1] - scores[-2] if len(scores) >= 2 else None
+    return {"url": url, "scores": scores, "delta": delta}

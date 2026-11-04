@@ -4,6 +4,7 @@ import type { CheckResult, ScanPhase, ScanResult } from "@/types/scan";
 import { streamScan, downloadReport } from "@/lib/api";
 import CheckCard from "./CheckCard";
 import ScoreGauge from "./ScoreGauge";
+import TrendBadge from "./TrendBadge";
 import FixList from "./FixList";
 import SubpageAnalysis from "./SubpageAnalysis";
 import FixToolkit from "./FixToolkit";
@@ -130,8 +131,9 @@ export default function ScanTab() {
 
           {/* Score */}
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 rounded-lg border border-white/[0.06] p-4">
-            <div className="w-32 shrink-0">
+            <div className="w-32 shrink-0 flex flex-col items-center gap-2">
               <ScoreGauge score={result.score} />
+              <TrendBadge url={result.url} />
             </div>
             <div className="flex-1 w-full space-y-4 sm:pt-2">
               <div className="flex gap-6">
