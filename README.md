@@ -25,6 +25,26 @@ Existing GEO tools (Profound, Peec AI) measure whether a brand is *mentioned* in
 
 Score is normalized to 0–100.
 
+## Score trend
+
+After a scan completes, the scanner stores the result so you can track how a site's machine-readability score moves over time. Next to the score gauge in the Scan tab a compact **trend badge** appears:
+
+- Green up arrow with `+N vs last scan` when the score rose
+- Red down arrow with `-N vs last scan` when it fell
+- A neutral dot when there is no prior scan to compare against
+
+The badge is fetched from a small endpoint and hides itself silently if the request fails, so it never blocks the main scan view.
+
+### API
+
+`GET /api/trend?url=<url>&n=<count>` returns the last `n` scan scores for a URL as a time series:
+
+```json
+{ "url": "https://example.com", "scores": [50, 62, 74], "delta": 12 }
+```
+
+`delta` is the change from the previous scan (last minus second-to-last) and is `null` when fewer than two scans exist. `n` defaults to 5.
+
 ## Quickstart
 
 Backend (FastAPI):

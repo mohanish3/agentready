@@ -25,6 +25,19 @@ export async function compareUrls(urls: string[]): Promise<ScanResult[]> {
   return res.json();
 }
 
+export interface TrendData {
+  url: string;
+  scores: number[];
+  delta: number | null;
+}
+
+export async function fetchTrend(url: string, n = 5): Promise<TrendData> {
+  const encoded = encodeURIComponent(url);
+  const res = await fetch(`${API}/api/trend?url=${encoded}&n=${n}`);
+  if (!res.ok) throw new Error(`Trend fetch failed (${res.status})`);
+  return res.json();
+}
+
 export async function downloadReport(
   result: ScanResult,
   type: "txt" | "pdf"

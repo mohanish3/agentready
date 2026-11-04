@@ -165,3 +165,37 @@ def get_scan(scan_id: int, db_path: str | Path = DEFAULT_DB_PATH) -> dict[str, A
     if row is None:
         return None
     return json.loads(row["result_json"])
+
+
+def get_recent_scans_for_url(
+    url: str,
+    *,
+    n: int = 5,
+    db_path: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """Return the most recent scans for a URL, oldest first.
+
+    Each entry is a dict with ``url``, ``score`` and ``created_at``.
+    Returns an empty list when the URL has no recorded scans.
+    The ``n`` parameter caps how many of the most recent scans are
+    returned. When ``db_path`` is omitted the module-level
+    ``DEFAULT_DB_PATH`` is resolved at call time so tests can patch it.
+    """
+    target = DEFAULT_DB_PATH if db_path is None else db_path
+    init_db(target)
+    with closing(connect(target)) as conn:
+        rows = conn.execute(
+            """
+            select url, score, created_at from scans
+            where url = ?
+            order by created_at desc, id desc
+            limit ?
+            """,
+            (url, n),
+        ).fetchall()
+    entries = [
+        {"url": r["url"], "score": r["score"], "created_at": r["created_at"]}
+        for r in rows
+    ]
+    entries.reverse()  # newest-first query -> oldest-first result
+    return entries
