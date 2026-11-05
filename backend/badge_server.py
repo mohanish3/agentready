@@ -139,7 +139,7 @@ def make_badge_app() -> FastAPI:
         return generate_svg_with_domain(0, domain)
     
     @app.get("/badge/{domain}/image")
-    def badge_image(domain: str, score: Optional[int] = Query(None)) -> bytes:
+    def badge_image(domain: str, score: Optional[int] = Query(None)) -> Response:
         """Get badge as image bytes."""
         content = generate_svg_with_domain(score or 0, domain)
         return Response(content=content.encode("utf-8"), media_type="image/svg+xml")
