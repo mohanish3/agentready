@@ -1,4 +1,4 @@
-import type { ScanResult } from "@/types/scan";
+import type { ScanResult, ScanSummary } from "@/types/scan";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -75,4 +75,19 @@ export function streamScan(
   };
 
   return () => es.close();
+}
+
+export async function listScans(limit = 50): Promise<ScanSummary[]> {
+  const res = await fetch(`${API}/api/scans?limit=${limit}`);
+  if (!res.ok) throw new Error('Failed to load scan history');
+  return res.json();
+}
+
+export async function getScanById(id: number): Promise<ScanResult> {
+  const res = await fetch(`${API}/api/scans/${id}`);
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('Scan not found');
+    throw new Error('Failed to load scan');
+  }
+  return res.json();
 }

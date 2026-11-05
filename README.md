@@ -46,6 +46,16 @@ npm run dev
 
 Open `http://localhost:3000` and enter a URL to scan.
 
+
+## Scan history
+
+Every scan is saved automatically. Open the **History** tab in the UI to browse past scans, view the full check breakdown for any previous result, and re-download the TXT or PDF report without re-scanning.
+
+The backend also exposes two read-only endpoints:
+
+- `GET /api/scans?limit=N` — most recent scan summaries (id, url, score, created_at), capped at 50 by default
+- `GET /api/scans/{id}` — the full stored result for a single scan (404 if not found)
+
 ## How it works
 
 Fetches the target URL and its `robots.txt` with a declared scanner user agent, runs the 8 checks against the static HTML response, and returns a per-check score breakdown with remediation notes.

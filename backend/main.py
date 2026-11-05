@@ -8,6 +8,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from scanner import CHECKS, scan
+from storage import get_scan, list_scans
 from pipeline import run_scan_pipeline, scan_pipeline_stream
 from reports import generate_txt, generate_pdf
 
@@ -137,3 +138,17 @@ def report_pdf(result: dict[str, Any]):
 @app.get("/api/checks")
 def list_checks():
     return [{"key": k, "label": l, "max_pts": p} for k, l, p in CHECKS]
+
+@app.get('/api/scans')
+def list_scans_endpoint(limit: int = 50):
+    """Return the most recent scan summaries (capped at 50 by default)."""
+    return list_scans(limit=limit)
+
+
+@app.get('/api/scans/{scan_id}')
+def get_scan_endpoint(scan_id: int):
+    """Return the full stored result for a single scan."""
+    result = get_scan(scan_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail='Scan not found')
+    return result
