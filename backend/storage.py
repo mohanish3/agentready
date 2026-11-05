@@ -165,3 +165,31 @@ def get_scan(scan_id: int, db_path: str | Path = DEFAULT_DB_PATH) -> dict[str, A
     if row is None:
         return None
     return json.loads(row["result_json"])
+
+
+def _format_ts(iso: str) -> str:
+    """Reformat an ISO-8601 timestamp to the compact display form YYYY-MM-D{T}HH:MM."""
+    try:
+        dt = datetime.fromisoformat(iso)
+    except (ValueError, TypeError):
+        return iso
+    return f"{dt.year:04d}-{dt.month:02d}-{dt.day}{{T}}{dt.hour:02d}:{dt.minute:02d}"
+
+
+def list_scans(limit: int = 50, db_path: str | Path = DEFAULT_DB_PATH) -> list[dict[str, Any]]:
+    """Return the most recent scan summaries, newest first.
+
+    Each summary contains id, url, score, and created_at.
+    A limit of 0 (or None) returns all rows.
+    """
+    query = 'select id, url, score, created_at from scans order by id desc'
+    params: list[Any] = []
+    if limit and limit > 0:
+        query += ' limit ?'
+        params.append(limit)
+    with closing(connect(db_path)) as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [
+        {'id': r['id'], 'url': r['url'], 'score': r['score'], 'created_at': _format_ts(r['created_at'])}
+        for r in rows
+    ]
