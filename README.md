@@ -50,6 +50,23 @@ Open `http://localhost:3000` and enter a URL to scan.
 
 Fetches the target URL and its `robots.txt` with a declared scanner user agent, runs the 8 checks against the static HTML response, and returns a per-check score breakdown with remediation notes.
 
+## One-Click llms.txt + JSON-LD Generator
+
+When a scan finds that `llms.txt` or structured data (JSON-LD) is missing, the **Fix Toolkit** shows a **Download your llms.txt / JSON-LD** button. Clicking it generates and downloads two ready-to-use files, pre-filled from what the scanner already detected about the site:
+
+- **`llms_<domain>.txt`** — an `llms.txt` file following the [llmstxt.org](https://llmstxt.org/) spec: an H1 title from your domain, a blockquote summary, a Key Pages section with the detected pricing/docs/contact URLs, an About block, and a For Automated Tools section. Replace the bracketed placeholders with your real copy and drop it at your domain root.
+- **`schema-<domain>.json`** — a JSON-LD snippet with `Organization`, `SoftwareApplication`, and `FAQPage` blocks pre-filled with your domain and contact/pricing URLs. Paste it into your `<head>`.
+
+Both files are generated server-side by `POST /api/generate/llms-txt` and `POST /api/generate/json-ld`, which accept a scan result object and return the file for download. The same two checks are always offered as copy-paste blocks in the Fix Toolkit, so the generator is a convenience on top of, not a replacement for, the inline templates.
+
+### API
+
+`POST /api/generate/llms-txt` — body: a scan result object (as returned by `POST /api/scan`). Returns the file as `text/plain` with a `Content-Disposition` attachment header.
+
+`POST /api/generate/json-ld` — body: a scan result object. Returns the file as `application/ld+json` with a `Content-Disposition` attachment header.
+
+Both return `400` when the body is missing the `url` field.
+
 ## Who it's for
 
 - B2B growth and RevOps teams auditing sites ahead of agentic-commerce workflows
