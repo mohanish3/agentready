@@ -1,4 +1,4 @@
-import type { ScanResult } from "@/types/scan";
+import type { ScanResult, ScanSummary } from "@/types/scan";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -45,6 +45,27 @@ export async function downloadReport(
   URL.revokeObjectURL(blobUrl);
 }
 
+export async function downloadGeneratedFile(
+  result: ScanResult,
+  type: "llms-txt" | "json-ld"
+): Promise<void> {
+  const res = await fetch(`${API}/api/generate/${type}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(result),
+  });
+  if (!res.ok) throw new Error(`Generate failed (${res.status})`);
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const safe = result.url.replace(/https?:\/\//, "").replace(/\//g, "_");
+  const ext = type === "llms-txt" ? "txt" : "json";
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = `${type === "llms-txt" ? "llms" : "schema"}_${safe}.${ext}`;
+  a.click();
+  URL.revokeObjectURL(blobUrl);
+}
+
 export function streamScan(
   url: string,
   onCheck: (check: object) => void,
@@ -75,4 +96,19 @@ export function streamScan(
   };
 
   return () => es.close();
+}
+
+export async function listScans(limit = 50): Promise<ScanSummary[]> {
+  const res = await fetch(`${API}/api/scans?limit=${limit}`);
+  if (!res.ok) throw new Error('Failed to load scan history');
+  return res.json();
+}
+
+export async function getScanById(id: number): Promise<ScanResult> {
+  const res = await fetch(`${API}/api/scans/${id}`);
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('Scan not found');
+    throw new Error('Failed to load scan');
+  }
+  return res.json();
 }
