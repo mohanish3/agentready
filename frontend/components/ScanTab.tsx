@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useCallback } from "react";
 import type { CheckResult, ScanPhase, ScanResult } from "@/types/scan";
-import { streamScan, downloadReport } from "@/lib/api";
+import { streamScan, downloadReport, badgeMarkdown } from "@/lib/api";
 import CheckCard from "./CheckCard";
 import ScoreGauge from "./ScoreGauge";
 import FixList from "./FixList";
@@ -19,6 +19,7 @@ export default function ScanTab() {
   const [result, setResult]         = useState<ScanResult | null>(null);
   const [error, setError]           = useState("");
   const [downloading, setDl]        = useState<"txt" | "pdf" | null>(null);
+  const [badgeCopied, setBadgeCopied] = useState(false);
   const [showAllChecks, setShowAll] = useState(false);
   const stopRef = useRef<(() => void) | null>(null);
 
@@ -48,6 +49,15 @@ export default function ScanTab() {
     try { await downloadReport(result, type); }
     catch { /* handled inline */ }
     finally { setDl(null); }
+  };
+
+  const handleCopyBadge = async () => {
+    if (!result) return;
+    try {
+      await navigator.clipboard.writeText(badgeMarkdown(result.url, result.score));
+      setBadgeCopied(true);
+      setTimeout(() => setBadgeCopied(false), 2000);
+    } catch { /* clipboard unavailable */ }
   };
 
   const reset = () => {
@@ -219,6 +229,12 @@ export default function ScanTab() {
               className="text-xs text-gray-500 hover:text-gray-200 transition-colors disabled:opacity-40"
             >
               {downloading === "pdf" ? "Generating…" : "↓ Download PDF"}
+            </button>
+            <button
+              onClick={handleCopyBadge}
+              className="text-xs text-gray-500 hover:text-gray-200 transition-colors"
+            >
+              {badgeCopied ? "✓ Badge copied" : "🏷 Copy badge"}
             </button>
             <button
               onClick={reset}

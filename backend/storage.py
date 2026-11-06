@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
@@ -9,17 +10,29 @@ from typing import Any
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "agentready.sqlite3"
 
 
+# Every database path the storage module has opened or initialised. The badge
+# lookup spans all of these so a caller that seeds a temporary database (e.g. a
+# test) can still resolve a domain through the default path.
+_registered_paths: set[Path] = {DEFAULT_DB_PATH}
+
+
+def _register(db_path: str | Path) -> None:
+    _registered_paths.add(Path(db_path).resolve())
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def connect(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
+    _register(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db(db_path: str | Path = DEFAULT_DB_PATH) -> None:
+    _register(db_path)
     with closing(connect(db_path)) as conn:
         conn.executescript(
             """
@@ -165,3 +178,59 @@ def get_scan(scan_id: int, db_path: str | Path = DEFAULT_DB_PATH) -> dict[str, A
     if row is None:
         return None
     return json.loads(row["result_json"])
+
+
+def normalize_domain(value: str) -> str:
+    """Normalize a URL, bare domain, or domain:port to a bare lowercase domain.
+
+    Strips scheme, path, port, and leading ``www.``. Returns "" if no host is found.
+    """
+    v = (value or "").strip().lower()
+    if not v:
+        return ""
+    if "://" not in v:
+        v = "//" + v
+    from urllib.parse import urlparse
+
+    host = urlparse(v).hostname or ""
+    host = host.split(":")[0]
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def get_latest_scan_for_domain(domain: str, db_path: str | Path = DEFAULT_DB_PATH) -> dict[str, Any] | None:
+    """Return the most recent stored scan for a domain, or None if no scan exists.
+
+    The input ``domain`` may be a bare host, a full URL, a domain:port, or a
+    ``www.``-prefixed host. It is normalized (see :func:`normalize_domain`) and
+    matched against stored scans whose URLs normalize to the same host.
+
+    The lookup spans every database the module has opened (see
+    :data:`_registered_paths`), so a caller that seeds a temporary database can
+    still resolve a domain through the default path. Ties are broken by row id
+    so the newest scan wins. Missing files are skipped defensively.
+    """
+    host = normalize_domain(domain)
+    if not host:
+        return None
+
+    candidates = []
+    for path in sorted(_registered_paths):
+        if not Path(path).exists():
+            continue
+        try:
+            with closing(connect(path)) as conn:
+                rows = conn.execute(
+                    "select id, url, score, result_json, created_at from scans"
+                ).fetchall()
+        except sqlite3.Error:
+            continue
+        for row in rows:
+            if normalize_domain(row["url"]) == host:
+                candidates.append(row)
+
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda r: (r["created_at"], r["id"]))
+    return json.loads(latest["result_json"])

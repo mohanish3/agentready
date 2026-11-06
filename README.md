@@ -25,6 +25,33 @@ Existing GEO tools (Profound, Peec AI) measure whether a brand is *mentioned* in
 
 Score is normalized to 0–100.
 
+## Live readiness badge
+
+The API serves a GitHub-ready badge backed by the most recent stored scan, so a
+README badge shows a site's real machine-readiness and refreshes each time it is
+re-scanned (the badge reflects the latest *stored* score, not a live re-scan):
+
+```
+GET /api/badge/{domain}             -> SVG badge (image/svg+xml)
+GET /api/badge/{domain}?format=markdown -> README-ready snippet
+```
+
+The domain accepts a bare host, a full URL, a `domain:port`, or a `www.`-prefixed
+host; all are normalized to the bare host before the lookup. If a domain has never
+been scanned the endpoint returns `404` rather than a placeholder score.
+
+Paste this into a README (the score updates on re-scan):
+
+```markdown
+[![AgentReadiness example.com | 88/100](http://localhost:8000/api/badge/example.com)](http://localhost:8000)
+```
+
+In the web app, the **Copy badge** button on a finished scan copies this snippet
+with the current score to your clipboard.
+
+The badge image URL can be pointed at a custom host by setting the
+`AGENTREADY_PUBLIC_URL` environment variable on the backend.
+
 ## Quickstart
 
 Backend (FastAPI):

@@ -45,6 +45,17 @@ export async function downloadReport(
   URL.revokeObjectURL(blobUrl);
 }
 
+export function badgeMarkdown(url: string, score: number): string {
+  const domain = new URL(url).hostname.replace(/^www\./, "");
+  const badgeUrl = `${API}/api/badge/${domain}`;
+  return (
+    `[![AgentReadiness ${domain} | ${score}/100](${badgeUrl})](${API})\n` +
+    `\n` +
+    `Badge shows the latest stored AgentReady score for ${domain}; it updates\n` +
+    `when the site is re-scanned.`
+  );
+}
+
 export function streamScan(
   url: string,
   onCheck: (check: object) => void,

@@ -1,4 +1,5 @@
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -10,6 +11,14 @@ from pydantic import BaseModel
 from scanner import CHECKS, scan
 from pipeline import run_scan_pipeline, scan_pipeline_stream
 from reports import generate_txt, generate_pdf
+from storage import get_latest_scan_for_domain, normalize_domain
+from badge_server import generate_svg_with_domain
+
+
+# Base URL used to build self-referential links (e.g. badge image URLs).
+# Override with the AGENTREADY_PUBLIC_URL env var when the app is served
+# from a non-default host.
+API_BASE_URL = os.environ.get("AGENTREADY_PUBLIC_URL", "http://localhost:8000").rstrip("/")
 
 app = FastAPI(title="agentready API")
 
@@ -35,6 +44,37 @@ class CompareRequest(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/badge/{domain}")
+def badge_endpoint(domain: str, format: str | None = None):
+    """Serve a live readiness badge backed by the most recent stored scan.
+
+    Returns an SVG badge by default. With ``?format=markdown`` it returns a
+    README-ready snippet. The badge reflects the latest *stored* scan (not a
+    live re-scan), which is labelled in the markdown snippet.
+    """
+    host = normalize_domain(domain)
+    if not host:
+        raise HTTPException(status_code=400, detail="Invalid domain format")
+
+    scan_row = get_latest_scan_for_domain(host)
+    if scan_row is None:
+        raise HTTPException(status_code=404, detail=f"No scan found for {host}")
+
+    score = int(scan_row.get("score", 0))
+    if format == "markdown":
+        badge_url = f"{API_BASE_URL}/api/badge/{host}"
+        snippet = (
+            f"[![AgentReadiness {host} | {score}/100]({badge_url})]({API_BASE_URL})\n"
+            f"\n"
+            f"Badge shows the latest stored AgentReady score for {host}; it updates\n"
+            f"when the site is re-scanned."
+        )
+        return Response(content=snippet, media_type="text/markdown")
+
+    svg = generate_svg_with_domain(score, host)
+    return Response(content=svg, media_type="image/svg+xml")
 
 
 @app.get("/api/scan/stream")
