@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from scanner import CHECKS, scan
 from storage import get_scan, list_scans
 from pipeline import run_scan_pipeline, scan_pipeline_stream
-from reports import generate_txt, generate_pdf
+from reports import generate_txt, generate_pdf, generate_llms_txt_file, generate_json_ld_file
 
 app = FastAPI(title="agentready API")
 
@@ -132,6 +132,30 @@ def report_pdf(result: dict[str, Any]):
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="agentready_{safe}.pdf"'},
+    )
+
+
+@app.post("/api/generate/llms-txt")
+def generate_llms_txt_endpoint(result: dict[str, Any]):
+    if not result or "url" not in result:
+        raise HTTPException(status_code=400, detail="Body must be a scan result object with a 'url' field.")
+    filename, content = generate_llms_txt_file(result)
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/generate/json-ld")
+def generate_json_ld_endpoint(result: dict[str, Any]):
+    if not result or "url" not in result:
+        raise HTTPException(status_code=400, detail="Body must be a scan result object with a 'url' field.")
+    filename, content = generate_json_ld_file(result)
+    return Response(
+        content=content,
+        media_type="application/ld+json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

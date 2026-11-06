@@ -45,6 +45,27 @@ export async function downloadReport(
   URL.revokeObjectURL(blobUrl);
 }
 
+export async function downloadGeneratedFile(
+  result: ScanResult,
+  type: "llms-txt" | "json-ld"
+): Promise<void> {
+  const res = await fetch(`${API}/api/generate/${type}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(result),
+  });
+  if (!res.ok) throw new Error(`Generate failed (${res.status})`);
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const safe = result.url.replace(/https?:\/\//, "").replace(/\//g, "_");
+  const ext = type === "llms-txt" ? "txt" : "json";
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = `${type === "llms-txt" ? "llms" : "schema"}_${safe}.${ext}`;
+  a.click();
+  URL.revokeObjectURL(blobUrl);
+}
+
 export function streamScan(
   url: string,
   onCheck: (check: object) => void,

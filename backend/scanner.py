@@ -897,6 +897,27 @@ def _generate_json_ld_snippet(base_url: str, company: str, subpages: dict) -> st
     return json.dumps(schema, indent=2)
 
 
+def generate_llms_txt(result: dict) -> str:
+    """Public wrapper: build a ready-to-use llms.txt from a scan result dict.
+
+    Accepts the full result object returned by /api/scan and derives the
+    company name from the URL domain (the scan's page title is not persisted
+    in the result dict, so the domain is the stable source of truth).
+    """
+    base_url = result.get("url", "")
+    company = urlparse(base_url).netloc.lstrip("www.")
+    subpages = result.get("subpages") or {}
+    return _generate_llms_txt_template(base_url, company, subpages)
+
+
+def generate_json_ld(result: dict) -> str:
+    """Public wrapper: build a ready-to-use JSON-LD snippet from a scan result dict."""
+    base_url = result.get("url", "")
+    company = urlparse(base_url).netloc.lstrip("www.")
+    subpages = result.get("subpages") or {}
+    return _generate_json_ld_snippet(base_url, company, subpages)
+
+
 def _detect_subpages(soup: BeautifulSoup, base_url: str) -> dict:
     domain = urlparse(base_url).netloc
     found = {}
