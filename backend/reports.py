@@ -1,5 +1,9 @@
 import datetime
+from urllib.parse import urlparse
+
 from fpdf import FPDF
+
+from scanner import generate_llms_txt, generate_json_ld
 
 
 def score_color_label(score: int) -> tuple[str, str]:
@@ -59,6 +63,28 @@ def _clean(s: str) -> str:
     for bad, good in _CHAR_MAP:
         s = s.replace(bad, good)
     return s.encode("latin-1", errors="replace").decode("latin-1")
+
+
+def _safe_domain(url: str) -> str:
+    """Derive a filesystem-safe token from a URL's host for filenames."""
+    host = urlparse(url).netloc
+    if not host:
+        host = (url or "").replace("https://", "").replace("http://", "").strip("/")
+    return host or "site"
+
+
+def generate_llms_txt_file(result: dict) -> tuple[str, str]:
+    """Build a downloadable llms.txt. Returns (filename, content)."""
+    content = generate_llms_txt(result)
+    filename = f"llms_{_safe_domain(result.get('url', ''))}.txt"
+    return filename, content
+
+
+def generate_json_ld_file(result: dict) -> tuple[str, str]:
+    """Build a downloadable JSON-LD snippet. Returns (filename, content)."""
+    content = generate_json_ld(result)
+    filename = f"schema-{_safe_domain(result.get('url', ''))}.json"
+    return filename, content
 
 
 def generate_pdf(result: dict) -> bytes:
