@@ -214,6 +214,35 @@ class TestSVGContent:
         assert "..." in svg
 
 
+class TestBadgeImageEndpoint:
+    """Tests for the real /badge/{domain}/image route on make_badge_app().
+
+    Uses the REAL app (make_badge_app), not the mock_app fixture, because
+    mock_app has no /image route. Regression guard: the endpoint must return
+    an image response (content-type image/svg+xml) with a valid SVG body,
+    not a 500 from an unserializable return value.
+    """
+
+    @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="FastAPI not available")
+    def test_image_endpoint_returns_svg_image(self):
+        """GET /badge/{domain}/image returns 200 with an image/svg+xml SVG body.
+
+        raise_server_exceptions=False so that a server-side bug (the route
+        returning a tuple that FastAPI cannot serialize => 500) surfaces as a
+        500 response we can assert on, rather than an uncaught exception.
+        """
+        from backend.badge_server import make_badge_app
+
+        client = TestClient(make_badge_app(), raise_server_exceptions=False)
+        response = client.get("/badge/example.com/image?score=85")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("image/svg+xml")
+        body = response.text
+        assert body.startswith("<?xml")
+        assert "<svg" in body
+        assert "</svg>" in body
+
+
 class TestScoreColorMapping:
     """Tests for score to color/status mapping."""
     

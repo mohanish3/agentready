@@ -3,8 +3,9 @@ import { useState } from "react";
 import ScanTab from "@/components/ScanTab";
 import CompareTab from "@/components/CompareTab";
 import InfoPanel from "@/components/InfoPanel";
+import HistoryTab from "@/components/HistoryTab";
 
-type Tab = "scan" | "compare";
+type Tab = "scan" | "compare" | "history";
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("scan");
@@ -30,7 +31,7 @@ export default function Home() {
         </div>
 
         <div className="flex border-b border-white/[0.06]">
-          {(["scan", "compare"] as Tab[]).map((id) => (
+          {(["scan", "compare", "history"] as Tab[]).map((id) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -40,13 +41,14 @@ export default function Home() {
                   : "border-transparent text-gray-500 hover:text-gray-300"
               }`}
             >
-              {id === "scan" ? "Scan" : "Compare"}
+              {id === "scan" ? "Scan" : id === "compare" ? "Compare" : "History"}
             </button>
           ))}
         </div>
 
         {tab === "scan"    && <ScanTab />}
         {tab === "compare" && <CompareTab />}
+        {tab === "history" && <HistoryTab />}
 
         <InfoPanel />
       </main>

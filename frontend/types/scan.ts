@@ -62,5 +62,13 @@ export interface ScanResult {
   next_step?: NextStep;
 }
 
+
+export interface ScanSummary {
+  id: number;
+  url: string;
+  score: number;
+  created_at: string;
+}
+
 export type ScanPhase = "idle" | "scanning" | "complete" | "error";
 export type ComparePhase = "idle" | "loading" | "complete";
