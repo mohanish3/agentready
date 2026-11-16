@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from scanner import CHECKS, scan
 from pipeline import run_scan_pipeline, scan_pipeline_stream
-from reports import generate_txt, generate_pdf
+from reports import generate_txt, generate_pdf, generate_robots_txt_file
 
 app = FastAPI(title="agentready API")
 
@@ -131,6 +131,27 @@ def report_pdf(result: dict[str, Any]):
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="agentready_{safe}.pdf"'},
+    )
+
+
+@app.post("/api/generate/robots-txt")
+def generate_robots_txt_endpoint(result: dict[str, Any]):
+    """One-click robots.txt remediation download for the AI Crawler Access check.
+
+    Accepts a scan result body, returns the corrected robots.txt as a text/plain
+    attachment. 400 when the body lacks a url; graceful no-op (404) when
+    nothing is blocked.
+    """
+    if not result.get("url"):
+        raise HTTPException(status_code=400, detail="A url is required to name the robots.txt download.")
+    out = generate_robots_txt_file(result)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Nothing to fix: no AI bot is blocked by the current robots.txt.")
+    filename, content = out
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
