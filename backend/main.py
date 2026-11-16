@@ -9,6 +9,8 @@ from fastapi.responses import Response, StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from storage import save_scan_result, get_scan, list_scans
 
+import storage
+
 from scanner import CHECKS, scan
 from pipeline import run_scan_pipeline, scan_pipeline_stream
 from reports import generate_txt, generate_pdf, generate_llms_txt_file, generate_json_ld_file
@@ -205,6 +207,20 @@ def generate_json_ld_endpoint(result: dict[str, Any]):
 def list_checks():
     return [{"key": k, "label": l, "max_pts": p} for k, l, p in CHECKS]
 
+
+@app.get("/api/trend")
+def trend_endpoint(url: str, n: int = 5):
+    """Return the last ``n`` scan scores for a URL as a time series.
+
+    ``delta`` is the change from the previous scan (last minus
+    second-to-last) and is ``None`` when fewer than two scans exist.
+    """
+    scans = storage.get_recent_scans_for_url(url, n=n)
+    scores = [s["score"] for s in scans]
+    delta = scores[-1] - scores[-2] if len(scores) >= 2 else None
+    return {"url": url, "scores": scores, "delta": delta}
+
+
 @app.get('/api/scans')
 def list_scans_endpoint(limit: int = 50):
     """Return the most recent scan summaries (capped at 50 by default)."""
@@ -218,3 +234,4 @@ def get_scan_endpoint(scan_id: int):
     if result is None:
         raise HTTPException(status_code=404, detail='Scan not found')
     return result
+
