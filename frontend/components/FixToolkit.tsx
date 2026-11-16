@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { ScanResult } from "@/types/scan";
-import { downloadRobotsTxt } from "@/lib/api";
+import { downloadRobotsTxt, downloadGeneratedFile } from "@/lib/api";
 
 function CopyBlock({ title, code }: { title: string; code: string }) {
   const [copied, setCopied] = useState(false);
@@ -33,6 +33,7 @@ function CopyBlock({ title, code }: { title: string; code: string }) {
 export default function FixToolkit({ result }: { result: ScanResult }) {
   const [open, setOpen] = useState(false);
   const [robotsBusy, setRobotsBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const hasLlms = !!result.llms_txt_template;
   const hasJsonLd = !!result.json_ld_snippet;
@@ -57,6 +58,22 @@ export default function FixToolkit({ result }: { result: ScanResult }) {
   const jsonLdFull = result.json_ld_snippet
     ? `<script type="application/ld+json">\n${result.json_ld_snippet}\n</script>`
     : null;
+
+  const generateFiles = async () => {
+    setDownloading(true);
+    try {
+      if (hasLlms) {
+        await downloadGeneratedFile(result, "llms-txt");
+      }
+      if (hasJsonLd) {
+        await downloadGeneratedFile(result, "json-ld");
+      }
+    } catch {
+      // Download is best-effort; the copy blocks below remain available.
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <section>
@@ -87,6 +104,13 @@ export default function FixToolkit({ result }: { result: ScanResult }) {
               </button>
             </div>
           )}
+          <button
+            onClick={generateFiles}
+            disabled={downloading}
+            className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed rounded-lg px-4 py-3 transition-colors"
+          >
+            <span>{downloading ? "Downloading..." : "Download your llms.txt / JSON-LD"}</span>
+          </button>
           {hasLlms && (
             <CopyBlock
               title="llms.txt template - save as /llms.txt at your domain root"

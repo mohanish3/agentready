@@ -7,9 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+import storage
+
 from scanner import CHECKS, scan
+from storage import get_scan, list_scans
 from pipeline import run_scan_pipeline, scan_pipeline_stream
-from reports import generate_txt, generate_pdf, generate_robots_txt_file
+from reports import generate_txt, generate_pdf, generate_robots_txt_file, generate_llms_txt_file, generate_json_ld_file
 
 app = FastAPI(title="agentready API")
 
@@ -155,6 +158,59 @@ def generate_robots_txt_endpoint(result: dict[str, Any]):
     )
 
 
+@app.post("/api/generate/llms-txt")
+def generate_llms_txt_endpoint(result: dict[str, Any]):
+    if not result or "url" not in result:
+        raise HTTPException(status_code=400, detail="Body must be a scan result object with a 'url' field.")
+    filename, content = generate_llms_txt_file(result)
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/generate/json-ld")
+def generate_json_ld_endpoint(result: dict[str, Any]):
+    if not result or "url" not in result:
+        raise HTTPException(status_code=400, detail="Body must be a scan result object with a 'url' field.")
+    filename, content = generate_json_ld_file(result)
+    return Response(
+        content=content,
+        media_type="application/ld+json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/api/checks")
 def list_checks():
     return [{"key": k, "label": l, "max_pts": p} for k, l, p in CHECKS]
+
+
+@app.get("/api/trend")
+def trend_endpoint(url: str, n: int = 5):
+    """Return the last ``n`` scan scores for a URL as a time series.
+
+    ``delta`` is the change from the previous scan (last minus
+    second-to-last) and is ``None`` when fewer than two scans exist.
+    """
+    scans = storage.get_recent_scans_for_url(url, n=n)
+    scores = [s["score"] for s in scans]
+    delta = scores[-1] - scores[-2] if len(scores) >= 2 else None
+    return {"url": url, "scores": scores, "delta": delta}
+
+
+@app.get('/api/scans')
+def list_scans_endpoint(limit: int = 50):
+    """Return the most recent scan summaries (capped at 50 by default)."""
+    return list_scans(limit=limit)
+
+
+@app.get('/api/scans/{scan_id}')
+def get_scan_endpoint(scan_id: int):
+    """Return the full stored result for a single scan."""
+    result = get_scan(scan_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail='Scan not found')
+    return result
+
