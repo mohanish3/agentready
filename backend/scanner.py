@@ -1,6 +1,7 @@
 import re
 import json
 import requests
+import requests.exceptions
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
@@ -167,6 +168,54 @@ CSR_ROOT_IDS = ["root", "app", "__next", "gatsby-focus-wrapper", "nuxt", "__nuxt
 
 AI_BOTS = ["GPTBot", "ClaudeBot", "PerplexityBot", "CCBot", "GoogleExtendedBot"]
 
+
+def _parse_robots_rules(robots_text: str):
+    """Parse a robots.txt body into (agents, rules) where rules maps an agent
+    name to the list of Disallow paths declared in that agent's block."""
+    current_agents = []
+    rules = {}
+    for line in (robots_text or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower().startswith("user-agent:"):
+            agent = line.split(":", 1)[1].strip()
+            current_agents.append(agent)
+        elif line.lower().startswith("disallow:"):
+            path = line.split(":", 1)[1].strip()
+            rules.setdefault(agent, []).append(path)
+    return current_agents, rules
+
+
+def _blocked_ai_bots(robots_text: str) -> list[str]:
+    """Return the AI_BOTS that a robots.txt body blocks.
+
+    Shared by BOTH the AI Crawler Access check and the robots.txt fix generator
+    so the two never drift. A bot counts as blocked when the wildcard (*) block
+    or its own block declares a full-site Disallow (`/` or `/*`).
+    """
+    current_agents, rules = _parse_robots_rules(robots_text)
+    blocked = []
+    for bot in AI_BOTS:
+        bot_blocked = False
+        if "*" in current_agents:
+            for rule in rules.get("*", []):
+                if rule in ("/", "/*"):
+                    bot_blocked = True
+                    break
+        if not bot_blocked:
+            for agent in current_agents:
+                if agent.lower() == bot.lower() or agent == "*":
+                    for rule in rules.get(agent, []):
+                        if rule in ("/", "/*"):
+                            bot_blocked = True
+                            break
+                    if bot_blocked:
+                        break
+        if bot_blocked:
+            blocked.append(bot)
+    return blocked
+
 CMP_SCRIPT_SIGNATURES = [
     "cookielaw.org", "onetrust.com", "cookiebot.com", "trustarc.com",
     "cookiepro.com", "didomi.io", "quantcast.com/choice", "usercentrics",
@@ -200,74 +249,61 @@ def _check_ai_crawler_access(base_url: str, session: requests.Session) -> dict:
                 "pass": True,
                 "detail": "No robots.txt - crawler user agents have unrestricted access.",
                 "action": "No action needed.",
+                "robots_txt": None,
             }
 
-        lines = r.text.splitlines()
-        current_agents = []
+        # Shared blocked-bot helper so the check and the fix generator never drift.
+        current_agents, rules = _parse_robots_rules(r.text)
+        blocked = _blocked_ai_bots(r.text)
+        blocked_set = set(blocked)
 
-        # Parse robots.txt rules per agent
-        rules = {}
-        for line in lines:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.lower().startswith("user-agent:"):
-                agent = line.split(":", 1)[1].strip()
-                current_agents.append(agent)
-            elif line.lower().startswith("disallow:"):
-                path = line.split(":", 1)[1].strip()
-                rules.setdefault(agent, []).append(path)
-
-        # Check each specific crawler agent individually
         crawler_details = []
-        all_blocked = False
-
         for bot in AI_BOTS:
-            bot_status = "allowed"
+            bot_status = "blocked" if bot in blocked_set else "allowed"
             bot_reason = None
-
-            if "*" in current_agents:
-                for rule in rules.get("*", []):
-                    if rule in ("/", "/*"):
-                        bot_status = "blocked"
-                        bot_reason = f"Wildcard Disallow: {rule}"
-                        all_blocked = True
-                        break
-
-            if bot_status != "blocked":
-                for agent in current_agents:
-                    if agent.lower() == bot.lower() or agent == "*":
-                        for rule in rules.get(agent, []):
-                            if rule in ("/", "/*"):
-                                bot_status = "blocked"
-                                bot_reason = f"Disallow: {rule}"
-                                all_blocked = True
+            if bot_status == "blocked":
+                # Surface the specific rule that blocks this bot for the report.
+                if "*" in current_agents:
+                    for rule in rules.get("*", []):
+                        if rule in ("/", "/*"):
+                            bot_reason = f"Wildcard Disallow: {rule}"
+                            break
+                if bot_reason is None:
+                    for agent in current_agents:
+                        if agent.lower() == bot.lower() or agent == "*":
+                            for rule in rules.get(agent, []):
+                                if rule in ("/", "/*"):
+                                    bot_reason = f"Disallow: {rule}"
+                                    break
+                            if bot_reason:
                                 break
-
             crawler_details.append({
                 "agent": bot,
                 "status": bot_status,
                 "reason": bot_reason
             })
 
-        if all_blocked:
+        if blocked:
             blocked_agents = [d["agent"] for d in crawler_details if d["status"] == "blocked"]
             return {
                 "pass": False,
                 "detail": f"Per-crawler breakdown: {blocked_agents} blocked. Remaining: {[d['agent'] for d in crawler_details if d['status'] == 'allowed']}.",
                 "action": "Edit robots.txt: remove `Disallow: /` rules for blocked agents. Add explicit `Allow: /` blocks above wildcard rules.",
+                "robots_txt": r.text,
             }
-        
+
         return {
             "pass": True,
             "detail": f"Per-crawler breakdown: All checked agents (GPTBot, ClaudeBot, PerplexityBot, CCBot, GoogleExtendedBot) are allowed.",
             "action": "No action needed.",
+            "robots_txt": r.text,
         }
     except Exception as e:
         return {
             "pass": None,
             "detail": f"Could not fetch robots.txt: {e}",
             "action": "Verify robots.txt is publicly accessible at /robots.txt.",
+            "robots_txt": None,
         }
 
 
@@ -566,7 +602,9 @@ def _check_api_discoverability(base_url: str, session: requests.Session) -> dict
                 found.append(path)
                 if r.headers.get("Access-Control-Allow-Origin"):
                     cors_present = True
-        except Exception:
+        except requests.exceptions.HTTPError:
+            pass
+        except requests.exceptions.RequestException:
             pass
 
     if found:
@@ -604,7 +642,9 @@ def _check_sitemap(base_url: str, session: requests.Session) -> dict:
                 line.strip().lower().startswith("sitemap:")
                 for line in robots_r.text.splitlines()
             )
-    except Exception:
+    except requests.exceptions.HTTPError:
+        pass
+    except requests.exceptions.RequestException:
         pass
 
     try:
@@ -897,6 +937,32 @@ def _generate_json_ld_snippet(base_url: str, company: str, subpages: dict) -> st
     return json.dumps(schema, indent=2)
 
 
+def generate_robots_txt(result: dict) -> str | None:
+    """Build a corrected robots.txt from a scan result, or None if there is
+    nothing to fix.
+
+    Reads the raw robots.txt carried in ``result['robots_txt']``. If any of
+    AI_BOTS is blocked, it returns the original text (preserved verbatim) with
+    an explicit ``User-agent: <bot>`` / ``Allow: /`` block appended for each
+    blocked bot. Append-only: no existing rule line is rewritten. Returns None
+    when there is no robots.txt to remediate or no AI bot is blocked.
+    """
+    robots_txt = result.get("robots_txt")
+    if not robots_txt:
+        return None
+
+    blocked = _blocked_ai_bots(robots_txt)
+    if not blocked:
+        return None
+
+    parts = [robots_txt.rstrip()]
+    for bot in blocked:
+        parts.append("")
+        parts.append(f"User-agent: {bot}")
+        parts.append("Allow: /")
+    return "\n".join(parts) + "\n"
+
+
 def generate_llms_txt(result: dict) -> str:
     """Public wrapper: build a ready-to-use llms.txt from a scan result dict.
 
@@ -953,6 +1019,8 @@ def _fetch_subpage(url: str, session: requests.Session):
         if r.status_code != 200:
             return None
         return BeautifulSoup(r.text, "html.parser")
+    except requests.exceptions.RequestException:
+        return None
     except Exception:
         return None
 
@@ -974,6 +1042,9 @@ def scan_stream(url: str, user_agent: str = None, fail_below: int = None):
         r = session.get(url, timeout=10)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
+    except requests.exceptions.HTTPError as e:
+        yield {"type": "error", "error": f"HTTP Error: {e.response.status_code} {e.reason}"}
+        return
     except Exception as e:
         yield {"type": "error", "error": str(e)}
         return
@@ -999,6 +1070,7 @@ def scan_stream(url: str, user_agent: str = None, fail_below: int = None):
 
     results = []
     raw_total = 0
+    robots_txt = None
     max_total = sum(max_pts for _, _, max_pts in CHECKS)
 
     for key, label, max_pts in CHECKS:
@@ -1006,6 +1078,9 @@ def scan_stream(url: str, user_agent: str = None, fail_below: int = None):
             outcome = check_fns[key]()
         except Exception as e:
             outcome = {"pass": None, "detail": f"Check failed unexpectedly: {e}", "action": ""}
+
+        if key == "ai_crawler_access":
+            robots_txt = outcome.get("robots_txt")
 
         if outcome.get("pass") is True:
             earned, status = max_pts, "pass"
@@ -1088,6 +1163,7 @@ def scan_stream(url: str, user_agent: str = None, fail_below: int = None):
         "subpages":           subpages,
         "llms_txt_template":  llms_txt_template,
         "json_ld_snippet":    json_ld_snippet,
+        "robots_txt":         robots_txt,
     }
     complete_result["next_step"] = _derive_next_step(complete_result)
     yield complete_result

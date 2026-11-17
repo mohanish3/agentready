@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 from fpdf import FPDF
 
-from scanner import generate_llms_txt, generate_json_ld
+from scanner import generate_robots_txt, generate_llms_txt, generate_json_ld
 
 
 def score_color_label(score: int) -> tuple[str, str]:
@@ -12,6 +12,20 @@ def score_color_label(score: int) -> tuple[str, str]:
     if score >= 40: return "#e67e22", "Average"
     if score >= 20: return "#e74c3c", "Below Average"
     return "#c0392b", "Not Ready"
+
+
+def generate_robots_txt_file(result: dict) -> tuple[str, str] | None:
+    """Return (filename, content) for the corrected robots.txt download, or None
+    when there is nothing to fix. Mirrors the llms.txt / JSON-LD file generators.
+
+    filename is ``robots_<domain>.txt`` derived from the scan result URL; content
+    is the append-only corrected robots.txt from the scanner.
+    """
+    content = generate_robots_txt(result)
+    if content is None:
+        return None
+    netloc = urlparse(result.get("url", "")).netloc or "site"
+    return f"robots_{netloc}.txt", content
 
 
 def generate_txt(result: dict) -> str:

@@ -2,18 +2,21 @@ import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse, JSONResponse
 from pydantic import BaseModel
+from storage import save_scan_result, get_scan, list_scans
 
 import storage
 
 from scanner import CHECKS, scan
-from storage import get_scan, list_scans
 from pipeline import run_scan_pipeline, scan_pipeline_stream
-from reports import generate_json_ld_file, generate_llms_txt_file, generate_pdf, generate_txt
+from reports import (
+    generate_json_ld_file, generate_llms_txt_file, generate_pdf, generate_robots_txt_file, generate_txt,
+)
 from storage import get_latest_scan_for_domain, normalize_domain
 from badge_server import generate_svg_with_domain
 
@@ -105,6 +108,47 @@ def scan_endpoint(body: ScanRequest) -> dict[str, Any]:
     return result
 
 
+@app.get("/api/scan/{domain}/raw")
+def scan_raw_endpoint(domain: str):
+    """
+    GET /api/scan/:domain/raw
+
+    Returns the most recent scan result in structured JSON format.
+    Returns 200 with scan result if exists, 404 if no scan found for domain.
+    """
+    # Extract domain from URL
+    parsed = urlparse(domain)
+    url = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme else domain
+
+    # Try to get cached scan result
+    result = get_scan()
+
+    # Filter by URL if multiple scans exist
+    if result is None or not isinstance(result, list):
+        # No cached results, return 404
+        return JSONResponse(status_code=404, content={"error": "No scan results found"})
+
+    # Find most recent scan for this domain
+    domain_scans = [r for r in result if r.get("url") == url]
+    if not domain_scans:
+        return JSONResponse(status_code=404, content={"error": "No scan found for this domain"})
+
+    # Return the most recent scan
+    latest = domain_scans[-1]
+    return JSONResponse(status_code=200, content=latest)
+
+
+@app.post("/api/scan")
+def scan_endpoint_with_save(body: ScanRequest) -> dict[str, Any]:
+    """Scan endpoint that saves result to storage."""
+    result = run_scan_pipeline(body.url, fail_below=body.fail_below)
+    if "error" in result:
+        raise HTTPException(status_code=422, detail=result["error"])
+    # Save to storage
+    save_scan_result(result)
+    return result
+
+
 @app.post("/api/compare")
 def compare_endpoint(body: CompareRequest) -> list[dict[str, Any]]:
     urls = body.urls[:3]
@@ -127,13 +171,13 @@ def compare_endpoint(body: CompareRequest) -> list[dict[str, Any]]:
         if "error" in result:
             comparison.append({"url": url, "error": result["error"]})
             continue
-        
+
         comp_entry = {
             "url": url,
             "score": result.get("score"),
             "checks": result.get("checks", []),
         }
-        
+
         # Compare with previous results if available
         prev = next((p for p in previous_results if p.get("url") == url), None)
         if prev and "score" in prev:
@@ -146,9 +190,9 @@ def compare_endpoint(body: CompareRequest) -> list[dict[str, Any]]:
                 comp_entry["trend"] = "degraded"
             else:
                 comp_entry["trend"] = "unchanged"
-        
+
         comparison.append(comp_entry)
-    
+
     return comparison
 
 
@@ -174,6 +218,27 @@ def report_pdf(result: dict[str, Any]):
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="agentready_{safe}.pdf"'},
+    )
+
+
+@app.post("/api/generate/robots-txt")
+def generate_robots_txt_endpoint(result: dict[str, Any]):
+    """One-click robots.txt remediation download for the AI Crawler Access check.
+
+    Accepts a scan result body, returns the corrected robots.txt as a text/plain
+    attachment. 400 when the body lacks a url; graceful no-op (404) when
+    nothing is blocked.
+    """
+    if not result.get("url"):
+        raise HTTPException(status_code=400, detail="A url is required to name the robots.txt download.")
+    out = generate_robots_txt_file(result)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Nothing to fix: no AI bot is blocked by the current robots.txt.")
+    filename, content = out
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
