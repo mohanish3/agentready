@@ -80,7 +80,7 @@ class TestListScans(unittest.TestCase):
             self.assertIsInstance(s["id"], int)
             self.assertTrue(s["url"].startswith("https://site"))
             self.assertIsInstance(s["score"], int)
-            self.assertRegex(s["created_at"], r"^\d{4}-\d{2}-\d{T}\d{2}:\d{2}")
+            self.assertRegex(s["created_at"], r"^\d{4}-\d{2}-\d{1,2}\{T\}\d{2}:\d{2}")
 
     def test_list_scans_respects_limit(self):
         import storage

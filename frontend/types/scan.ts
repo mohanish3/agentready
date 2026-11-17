@@ -57,6 +57,7 @@ export interface ScanResult {
   subpages: Record<string, SubpageResult>;
   llms_txt_template?: string | null;
   json_ld_snippet?: string | null;
+  robots_txt?: string | null;
   scan_id?: number;
   pipeline_run_id?: number;
   next_step?: NextStep;

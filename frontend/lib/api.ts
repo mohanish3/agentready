@@ -58,6 +58,24 @@ export async function downloadReport(
   URL.revokeObjectURL(blobUrl);
 }
 
+export async function downloadRobotsTxt(
+  result: ScanResult
+): Promise<void> {
+  const res = await fetch(`${API}/api/generate/robots-txt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(result),
+  });
+  if (!res.ok) throw new Error("robots.txt generation failed");
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = `robots_${result.url.replace(/https?:\/\//, "").replace(/^www\./, "")}.txt`;
+  a.click();
+  URL.revokeObjectURL(blobUrl);
+}
+
 export async function downloadGeneratedFile(
   result: ScanResult,
   type: "llms-txt" | "json-ld"
